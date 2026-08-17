@@ -8,7 +8,12 @@
 #include <dirent.h>
 #include <wctype.h>
 
-char *KEYWORDS[2] = 
+enum KEYS{
+    EXEC = 0,
+    CHDIR = 1,
+};
+
+static const char *KEYWORDS[2] = 
 {
     "exec",             //execute bin/script    0
     "chdir"             //change directory      1
@@ -22,7 +27,7 @@ int myExecFunc(){
 //check which keyword is in first part of prompt.
 //user prompt should look like: 
 //  [SHELL KEYWORD] [KEYWORD ARG aka. file/dir] [arguments for keyword arg aka. almost irrelevant for me]
-int myInputCheck(char *buf)
+int myInputCheck(char *buf, char *key, char *key_arg)
 {
     if(strlen(buf) == 0){
         return 0;
@@ -30,79 +35,76 @@ int myInputCheck(char *buf)
 
     size_t len = sizeof(KEYWORDS)/sizeof(char*);
     char keyword[256];
-    int index;
     char tok[1000];
-    char *loc;
+    int index = 0;
+    int error = 0;
     
     sscanf(buf, " %s %[^\n]", keyword, tok);
 
     printf("%s\n", keyword);
     printf("%s\n", tok);
-    size_t buf_len = strlen(buf);
 
-    int i = 0;
-    while (!iswspace(buf[i++])){}
+    error = 1;
+    for (size_t j = 0; j < len; j++)
+    {
+        if (strcmp(keyword, KEYWORDS[j]) == 0)
+        {
+            error = 0;
+        }
+    }
 
-    //after this while: k is index of first tok char
-    //and k-1 is first whitespace
-    //so compare first k chars for keyword
+    if(error != 0)
+        return 1
+    ;
 
-            if(strncpy_s(keyword, buf, i))
-            {
-                fprintf(stderr, "something went wrong in strncpy");
-                return 1;
-            }
-            if(memcpy_s(tok, buf[i], buf_len-i)){
-                fprintf(stderr, "something went wrong in memcpy_s");
-                return 1;
-            }
+    if(index == EXEC){
 
-            printf("%s\n", tok);
-            prinft("%s\n", keyword);
-
-            for (size_t j = 0; j < len; j++)
-            {
-                if(!strncmp(keyword, KEYWORDS[j], i-1)){
-                    index = j;
-                }
-            }
-
-    if(index == 0){
         myExecFunc();
         printf("the rest of the string was: %s\n", tok);
         return 0;
     }
-    else if(index == 1){
+    else if(index == CHDIR){
+        
         return 0;
     }
     else{
-        fprintf(stderr, "unknown command keyword: %");
+        fprintf(stderr, "unknown command keyword:");
         return 1;
     }
     
-
     return 0;
 }
 
 int main(int argc, char const *argv[])
 {
-    int error;
-    char buf[1000];
-    scanf(" %[^\n]", buf);
-    printf("%s\n", buf);
-    if((error = myInputCheck(buf))){
-        fprintf(stderr, "myInputCheck returned error");
-        return 1;
-    }
-
-    /* struct dirent *entry;
+/*     //imitate the PATH variable processing with testbin
+    struct dirent *entry;
     DIR *dir = opendir("./testbin");
     while ((entry = readdir(dir)) != NULL)
     {
         if(entry->d_name != "." && entry->d_name != ".."){
             printf("filename: %s\n", entry->d_name);
+
         }
     } */
+
+    while (1)
+    {
+        
+        char *key = malloc(0);
+        char *key_arg = malloc(0);
+        
+        int error;
+        char buf[1000];
+        scanf(" %[^\n]", buf);
+        printf("%s\n", buf);
+        if((error = myInputCheck(buf, key, key_arg))){
+            fprintf(stderr, "myInputCheck returned error");
+            return 1;
+        }
+        
+    }
+
 }
     
 /*
