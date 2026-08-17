@@ -1,107 +1,134 @@
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <getopt.h>
 #include <dirent.h>
 #include <wctype.h>
 
 enum KEYS{
     EXEC = 0,
     CHDIR = 1,
+    EXIT_APP = 2,
 };
 
-static const char *KEYWORDS[2] = 
+static const char *PATHS[2] = 
+{
+    "/home/lucas/VSCProjects/C_MyShell/anothertestbin/",
+    "/home/lucas/VSCProjects/C_MyShell/testbin/"
+};
+
+static const char *KEYWORDS[3] = 
 {
     "exec",             //execute bin/script    0
     "chdir"             //change directory      1
+    "exit"              //exit program          2
 };
 
-int myExecFunc(){
-    printf("keyword found: exec!\n");
-    return 0;
+int searchInPathVar(char *path)
+{
+    // imitate the PATH variable processing with testbin
+    struct dirent *entry;
+    
+    for (size_t i = 0; i < sizeof(KEYWORDS)/sizeof(char*); i++)
+    {
+        DIR *dir;
+        if((dir = opendir(PATHS[i])) == NULL)
+        {
+            perror("opendir:");
+            return 1;
+        }
+
+        while((entry = readdir(dir)) != NULL)
+        {
+            if(entry->d_name == path){
+                return 0;
+            }
+        }  
+    }
+
+    fprintf(stderr, "specified file does'nt exist");
+    return 1;
+
+    
 }
 
 //check which keyword is in first part of prompt.
 //user prompt should look like: 
 //  [SHELL KEYWORD] [KEYWORD ARG aka. file/dir] [arguments for keyword arg aka. almost irrelevant for me]
-int myInputCheck(char *buf, char *key, char *key_arg)
+int myInputCheck(char *buf, char *key, char *path, char *key_arg)
 {
     if(strlen(buf) == 0){
         return 0;
     }
 
     size_t len = sizeof(KEYWORDS)/sizeof(char*);
-    char keyword[256];
-    char tok[1000];
+    char cmd[256];
+    char prog[1000];
+    char prog_arg[1000];
     int index = 0;
     int error = 0;
     
-    sscanf(buf, " %s %[^\n]", keyword, tok);
+    sscanf(buf, " %s %s %[^\n]", cmd, path, prog_arg);
 
-    printf("%s\n", keyword);
-    printf("%s\n", tok);
+    printf("%s\n", cmd);
+    printf("%s\n", prog_arg);
 
     error = 1;
     for (size_t j = 0; j < len; j++)
     {
-        if (strcmp(keyword, KEYWORDS[j]) == 0)
+        if (strcmp(cmd, KEYWORDS[j]) == 0)
         {
             error = 0;
         }
     }
 
     if(error != 0)
+
+    switch (error)
+    {
+    case EXEC:
+        fprintf(stderr, "exec some went wrong");
+        break;
+    case EXIT_APP:
+        fprintf(stderr, "exit some went wrong");
+        break;
+    case CHDIR:
+        fprintf(stderr, "chdir some went wrong");
+        break;
+    default:
+        break;
+    }
+
         return 1
     ;
 
-    if(index == EXEC){
+    key = realloc(key, strlen(cmd)+1);
+    path = realloc(path, strlen(prog_arg)+1);
+    key_arg = realloc(key_arg, strlen(prog_arg)+1);
 
-        myExecFunc();
-        printf("the rest of the string was: %s\n", tok);
-        return 0;
-    }
-    else if(index == CHDIR){
-        
-        return 0;
-    }
-    else{
-        fprintf(stderr, "unknown command keyword:");
-        return 1;
-    }
-    
     return 0;
 }
 
 int main(int argc, char const *argv[])
 {
-/*     //imitate the PATH variable processing with testbin
-    struct dirent *entry;
-    DIR *dir = opendir("./testbin");
-    while ((entry = readdir(dir)) != NULL)
-    {
-        if(entry->d_name != "." && entry->d_name != ".."){
-            printf("filename: %s\n", entry->d_name);
+   char *key = malloc(0), *path = malloc(0), *key_arg = malloc(0);
+   char buf[1000];
+   int index_key = 0;
+   int error = 0;
 
-        }
-    } */
-
-    while (1)
+    while (*key != "exit")
     {
-        
-        char *key = malloc(0);
-        char *key_arg = malloc(0);
-        
-        int error;
-        char buf[1000];
         scanf(" %[^\n]", buf);
         printf("%s\n", buf);
-        if((error = myInputCheck(buf, key, key_arg))){
+        if((error = myInputCheck(buf, key, path, key_arg))){
             fprintf(stderr, "myInputCheck returned error");
-            return 1;
+            error = 0;
         }
+
+        searchInPathVar(path);  //see static variable PATH for testing
+
+        //only then start forking
         
     }
 
