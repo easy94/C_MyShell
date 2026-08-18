@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <errno.h>
 #include <dirent.h>
@@ -21,7 +22,7 @@ static const char *PATHS[2] =
 static const char *KEYWORDS[3] = 
 {
     "exec",             //execute bin/script    0
-    "chdir"             //change directory      1
+    "chdir",             //change directory      1
     "exit"              //exit program          2
 };
 
@@ -29,7 +30,7 @@ int searchInPathVar(char *path)
 {
     // imitate the PATH variable processing with testbin
     struct dirent *entry;
-    
+    printf("%s\n", path);
     for (size_t i = 0; i < sizeof(KEYWORDS)/sizeof(char*); i++)
     {
         DIR *dir;
@@ -56,7 +57,7 @@ int searchInPathVar(char *path)
 //check which keyword is in first part of prompt.
 //user prompt should look like: 
 //  [SHELL KEYWORD] [KEYWORD ARG aka. file/dir] [arguments for keyword arg aka. almost irrelevant for me]
-int myInputCheck(char *buf, char *key, char *path, char *key_arg)
+int myInputCheck(char *buf, char **key, char **path, char **path_arg)
 {
     if(strlen(buf) == 0){
         return 0;
@@ -66,13 +67,10 @@ int myInputCheck(char *buf, char *key, char *path, char *key_arg)
     char cmd[256];
     char prog[1000];
     char prog_arg[1000];
-    int index = 0;
     int error = 0;
     
-    sscanf(buf, " %s %s %[^\n]", cmd, path, prog_arg);
+    sscanf(buf, " %s %s %[^\n]", cmd, prog, prog_arg);
 
-    printf("%s\n", cmd);
-    printf("%s\n", prog_arg);
 
     error = 1;
     for (size_t j = 0; j < len; j++)
@@ -83,45 +81,50 @@ int myInputCheck(char *buf, char *key, char *path, char *key_arg)
         }
     }
 
-    if(error != 0)
-
-    switch (error)
-    {
-    case EXEC:
-        fprintf(stderr, "exec some went wrong");
-        break;
-    case EXIT_APP:
-        fprintf(stderr, "exit some went wrong");
-        break;
-    case CHDIR:
-        fprintf(stderr, "chdir some went wrong");
-        break;
-    default:
-        break;
+    if(error != 0){
+        switch (error)
+        {
+            case EXEC:
+            fprintf(stderr, "exec some went wrong");
+            break;
+            case EXIT_APP:
+            fprintf(stderr, "exit some went wrong");
+            break;
+            case CHDIR:
+            fprintf(stderr, "chdir some went wrong");
+            break;
+            default:
+            break;
+        } 
+        return 1;
     }
 
-        return 1
-    ;
+    *key = realloc(*key, strlen(cmd)+1);
+    strcpy(*key, cmd);
+    *path = realloc(*path, strlen(prog)+1);
+    strcpy(*path, prog);
+    *path_arg = realloc(*path_arg, strlen(prog_arg)+1);
+    strcpy(*path_arg, prog_arg);
 
-    key = realloc(key, strlen(cmd)+1);
-    path = realloc(path, strlen(prog_arg)+1);
-    key_arg = realloc(key_arg, strlen(prog_arg)+1);
+    printf("%s\n", *key);
+    printf("%s\n", *path);
+    printf("%s\n", *path_arg);
 
     return 0;
 }
 
 int main(int argc, char const *argv[])
 {
-   char *key = malloc(0), *path = malloc(0), *key_arg = malloc(0);
-   char buf[1000];
-   int index_key = 0;
-   int error = 0;
+    char *key = malloc(0), *path = malloc(0), *path_arg = malloc(0);
+    char buf[1000];
+    int error = 0;
+    char const *ptrpath = path;
+    char *const ptrpath_arg = path_arg;
 
-    while (*key != "exit")
+    while (1)
     {
         scanf(" %[^\n]", buf);
-        printf("%s\n", buf);
-        if((error = myInputCheck(buf, key, path, key_arg))){
+        if((error = myInputCheck(buf, &key, &path, &path_arg))){
             fprintf(stderr, "myInputCheck returned error");
             error = 0;
         }
@@ -129,11 +132,28 @@ int main(int argc, char const *argv[])
         searchInPathVar(path);  //see static variable PATH for testing
 
         //only then start forking
-        
-    }
+        pid_t cpid;
 
+        if ((cpid=fork())==-1)
+        {
+            perror("fork");
+            return 1;
+        }
+        
+        if (cpid == 1)
+        {
+            execv(ptrpath, &ptrpath_arg);
+        }
+        else
+        {
+            
+        }
+        
+        
+
+    }
 }
-    
+
 /*
 int opt;
 int verbose = 0;
