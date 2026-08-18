@@ -29,9 +29,11 @@ static const char *KEYWORDS[3] =
 int searchInPathVar(char *path)
 {
     // imitate the PATH variable processing with testbin
+    //this must recursively search all folder in the specified paths
+    //so that i can only search for the name of the program instead of passing the path
     struct dirent *entry;
     printf("%s\n", path);
-    for (size_t i = 0; i < sizeof(KEYWORDS)/sizeof(char*); i++)
+    for (size_t i = 0; i < sizeof(PATHS)/sizeof(char*); i++)
     {
         DIR *dir;
         if((dir = opendir(PATHS[i])) == NULL)
@@ -48,7 +50,7 @@ int searchInPathVar(char *path)
         }  
     }
 
-    fprintf(stderr, "specified file does'nt exist");
+    fprintf(stderr, "specified file does'nt exist\n");
     return 1;
 
     
@@ -57,7 +59,7 @@ int searchInPathVar(char *path)
 //check which keyword is in first part of prompt.
 //user prompt should look like: 
 //  [SHELL KEYWORD] [KEYWORD ARG aka. file/dir] [arguments for keyword arg aka. almost irrelevant for me]
-int myInputCheck(char *buf, char **key, char **path, char **path_arg)
+int myInputCheck(char *buf, char **key, char **path, char ***path_arg)
 {
     if(strlen(buf) == 0){
         return 0;
@@ -69,8 +71,30 @@ int myInputCheck(char *buf, char **key, char **path, char **path_arg)
     char prog_arg[1000];
     int error = 0;
     
+    //split up prog_arg with strtok and put them into a string array that is null terminated, then realloc *path_arg and copy over the elements
+    
     sscanf(buf, " %s %s %[^\n]", cmd, prog, prog_arg);
 
+    char *str;
+    char *argv[100];
+    size_t k = 0;
+    str = strtok(prog_arg, " ");
+    while (str != NULL)
+    {
+        argv[k]=str;
+        str = strtok(NULL, " ");
+        k++;
+    }
+    argv[k+1]= NULL;
+    char ***arr = calloc(k+1, 100); 
+    
+    for (size_t i = 0; i <= k+1; i++)
+    {
+        strcpy(*arr[i], argv[i]);
+        printf("%s\n", *arr[i]);
+    }
+
+    *path_arg = *arr;
 
     error = 1;
     for (size_t j = 0; j < len; j++)
@@ -103,28 +127,28 @@ int myInputCheck(char *buf, char **key, char **path, char **path_arg)
     strcpy(*key, cmd);
     *path = realloc(*path, strlen(prog)+1);
     strcpy(*path, prog);
-    *path_arg = realloc(*path_arg, strlen(prog_arg)+1);
-    strcpy(*path_arg, prog_arg);
 
     printf("%s\n", *key);
     printf("%s\n", *path);
-    printf("%s\n", *path_arg);
 
     return 0;
 }
 
 int main(int argc, char const *argv[])
 {
-    char *key = malloc(0), *path = malloc(0), *path_arg = malloc(0);
-    char buf[1000];
-    int error = 0;
-    char const *ptrpath = path;
-    char *const ptrpath_arg = path_arg;
+    char *const *c_ptrpath_arg;
+    char **ptrpath_arg;
+    char *key = malloc(0);
+    char *path = malloc(0);
+    char const *c_ptrpath;
 
+    char buf[1000];
+   
+    int error = 0;
     while (1)
     {
         scanf(" %[^\n]", buf);
-        if((error = myInputCheck(buf, &key, &path, &path_arg))){
+        if((error = myInputCheck(buf, &key, &path, &ptrpath_arg))){
             fprintf(stderr, "myInputCheck returned error");
             error = 0;
         }
@@ -139,18 +163,22 @@ int main(int argc, char const *argv[])
             perror("fork");
             return 1;
         }
-        
+
+        c_ptrpath = path;
+        c_ptrpath_arg = ptrpath_arg;
+
+        printf("%s\n", c_ptrpath);
         if (cpid == 1)
         {
-            execv(ptrpath, &ptrpath_arg);
+            execv(c_ptrpath, c_ptrpath_arg);
+            _exit(0);
         }
         else
         {
             
         }
         
-        
-
+        free(ptrpath_arg);
     }
 }
 
