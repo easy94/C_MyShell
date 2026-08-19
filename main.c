@@ -85,16 +85,17 @@ int myInputCheck(char *buf, char **key, char **path, char ***path_arg)
         str = strtok(NULL, " ");
         k++;
     }
-    argv[k+1]= NULL;
-    char ***arr = calloc(k+1, 100); 
-    
-    for (size_t i = 0; i <= k+1; i++)
+    argv[k]= NULL;
+
+    char **arr = calloc(k+1, 100); 
+    for (size_t i = 0; i < k+1; i++)
     {
-        strcpy(*arr[i], argv[i]);
-        printf("%s\n", *arr[i]);
+        arr[i] = argv[i];
+        //strcpy(arr[i], argv[i]);
+        printf("%s\n", arr[i]);
     }
 
-    *path_arg = *arr;
+    *path_arg = arr;
 
     error = 1;
     for (size_t j = 0; j < len; j++)
@@ -134,51 +135,96 @@ int myInputCheck(char *buf, char **key, char **path, char ***path_arg)
     return 0;
 }
 
+int tokenize(char *buf, char *key, const char **path, char *const **args)
+{
+    char **arrargs = malloc(sizeof(char*)*32);
+    char *strpath, *str;
+    char *tok;
+    tok = strtok(buf, " ");
+    int i = 0;
+    size_t len = 0;
+    while (tok != NULL && i < 2)
+    {
+        len = strlen(tok)+1;
+        if(i++ == 0){
+            if(len > 16){
+                fprintf(stderr, "argument 1: cmd exceeds length");
+                exit(EXIT_FAILURE);
+            }
+            strcpy(key, tok);
+        }
+        else{
+            strpath = malloc(len);
+            strcpy(strpath, tok);
+            *path = strpath;
+        }
+        tok = strtok(NULL, " ");
+    }
+
+    i=1;
+    while (tok != NULL)
+    {
+        str = malloc(strlen(tok)+1);
+        strcpy(str, tok);
+        arrargs[i++] = str;
+        tok = strtok(NULL, " ");
+    }
+    arrargs[0] = strrchr(*path, '/')+1;
+    arrargs[i] = NULL;
+    *args = realloc(arrargs, (i+1)*sizeof(char*));
+
+    return 0;
+}
+
 int main(int argc, char const *argv[])
 {
-    char *const *c_ptrpath_arg;
-    char **ptrpath_arg;
-    char *key = malloc(0);
-    char *path = malloc(0);
-    char const *c_ptrpath;
+    char *const *pathargs;
+    const char *path;
+    char buf[1000], key[16];
+    int error = 0, index = 1;   //one because pointer shennanigans in tokenize()
 
-    char buf[1000];
-   
-    int error = 0;
     while (1)
     {
         scanf(" %[^\n]", buf);
-        if((error = myInputCheck(buf, &key, &path, &ptrpath_arg))){
+        tokenize(buf, key, &path, &pathargs);
+
+        /*
+        if((error = myInputCheck(buf, &key, &path, &pathargs))){
             fprintf(stderr, "myInputCheck returned error");
             error = 0;
         }
+        */
 
-        searchInPathVar(path);  //see static variable PATH for testing
+        //searchInPathVar(path);  //see static variable PATH for testing
 
         //only then start forking
+        /*
         pid_t cpid;
-
+        
         if ((cpid=fork())==-1)
         {
             perror("fork");
             return 1;
         }
-
-        c_ptrpath = path;
-        c_ptrpath_arg = ptrpath_arg;
-
-        printf("%s\n", c_ptrpath);
+        
         if (cpid == 1)
         {
-            execv(c_ptrpath, c_ptrpath_arg);
+            execv(path, pathargs);
             _exit(0);
         }
         else
         {
-            
+            wait(cpid);
         }
+        */
         
-        free(ptrpath_arg);
+        while (pathargs[index] != NULL)
+        {
+            free(pathargs[index++]);
+        }
+        if(error != 10000000)
+        free((char*)pathargs);
+        free((char*)path);
     }
 }
 
