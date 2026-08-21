@@ -1,159 +1,104 @@
 #define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
 #include <dirent.h>
-#include <wctype.h>
+//#include <wctype.h>
+#include <sys/wait.h>
 
-enum KEYS{
+enum KEYS
+{
     EXEC = 0,
     CHDIR = 1,
     EXIT_APP = 2,
 };
 
-static const char *PATHS[2] = 
-{
-    "/home/lucas/VSCProjects/C_MyShell/anothertestbin/",
-    "/home/lucas/VSCProjects/C_MyShell/testbin/"
-};
-
-static const char *KEYWORDS[3] = 
-{
-    "exec",             //execute bin/script    0
-    "chdir",             //change directory      1
-    "exit"              //exit program          2
-};
-
-int searchInPathVar(char *path)
-{
-    // imitate the PATH variable processing with testbin
-    //this must recursively search all folder in the specified paths
-    //so that i can only search for the name of the program instead of passing the path
-    struct dirent *entry;
-    printf("%s\n", path);
-    for (size_t i = 0; i < sizeof(PATHS)/sizeof(char*); i++)
+static const char *KEYWORDS[3] =
     {
-        DIR *dir;
-        if((dir = opendir(PATHS[i])) == NULL)
-        {
-            perror("opendir:");
+        "exec",  // execute bin/script    0
+        "chdir", // change directory      1
+        "exit"   // exit program          2
+};
+static const size_t KEYWORDLEN = 3;
+
+int getFullPath(char *target, const char **out)
+{
+    DIR *dir;
+    struct dirent *entry;
+    char *path = strdup(getenv("PATH"));
+    char *str = strtok(path, ":");
+    char *fullpath;
+    while (str != NULL)
+    {
+        if ((dir = opendir(str)) == NULL){
+            perror("opendir");
             return 1;
         }
 
-        while((entry = readdir(dir)) != NULL)
+        errno = 0;
+        while ((entry = readdir(dir)) != NULL)
         {
-            if(entry->d_name == path){
+            if (entry->d_type == DT_REG && strcmp(entry->d_name, target)==0){
+                puts("found");
+                fullpath = malloc(strlen(str)+strlen(target)+1);
+                strcpy(fullpath, strcat(strcat(str, "/"), target));
+                free((char*)*out);
+                *out = fullpath;
+                free (path);
                 return 0;
             }
-        }  
-    }
+        }
 
+        if (errno != 0){
+            perror("readdir");
+            errno = 0;
+        }
+
+        closedir(dir);
+        str = strtok(NULL, ":");
+    }
+    free(path);
     fprintf(stderr, "specified file does'nt exist\n");
     return 1;
-
-    
-}
-
-//check which keyword is in first part of prompt.
-//user prompt should look like: 
-//  [SHELL KEYWORD] [KEYWORD ARG aka. file/dir] [arguments for keyword arg aka. almost irrelevant for me]
-int myInputCheck(char *buf, char **key, char **path, char ***path_arg)
-{
-    if(strlen(buf) == 0){
-        return 0;
-    }
-
-    size_t len = sizeof(KEYWORDS)/sizeof(char*);
-    char cmd[256];
-    char prog[1000];
-    char prog_arg[1000];
-    int error = 0;
-    
-    //split up prog_arg with strtok and put them into a string array that is null terminated, then realloc *path_arg and copy over the elements
-    
-    sscanf(buf, " %s %s %[^\n]", cmd, prog, prog_arg);
-
-    char *str;
-    char *argv[100];
-    size_t k = 0;
-    str = strtok(prog_arg, " ");
-    while (str != NULL)
-    {
-        argv[k]=str;
-        str = strtok(NULL, " ");
-        k++;
-    }
-    argv[k]= NULL;
-
-    char **arr = calloc(k+1, 100); 
-    for (size_t i = 0; i < k+1; i++)
-    {
-        arr[i] = argv[i];
-        //strcpy(arr[i], argv[i]);
-        printf("%s\n", arr[i]);
-    }
-
-    *path_arg = arr;
-
-    error = 1;
-    for (size_t j = 0; j < len; j++)
-    {
-        if (strcmp(cmd, KEYWORDS[j]) == 0)
-        {
-            error = 0;
-        }
-    }
-
-    if(error != 0){
-        switch (error)
-        {
-            case EXEC:
-            fprintf(stderr, "exec some went wrong");
-            break;
-            case EXIT_APP:
-            fprintf(stderr, "exit some went wrong");
-            break;
-            case CHDIR:
-            fprintf(stderr, "chdir some went wrong");
-            break;
-            default:
-            break;
-        } 
-        return 1;
-    }
-
-    *key = realloc(*key, strlen(cmd)+1);
-    strcpy(*key, cmd);
-    *path = realloc(*path, strlen(prog)+1);
-    strcpy(*path, prog);
-
-    printf("%s\n", *key);
-    printf("%s\n", *path);
-
-    return 0;
 }
 
 int tokenize(char *buf, char *key, const char **path, char *const **args)
 {
-    char **arrargs = malloc(sizeof(char*)*32);
+    const char **arrargs = malloc(sizeof(char *) * 32);
     char *strpath, *str;
     char *tok;
     tok = strtok(buf, " ");
     int i = 0;
     size_t len = 0;
+
+    // key + path
     while (tok != NULL && i < 2)
     {
-        len = strlen(tok)+1;
-        if(i++ == 0){
-            if(len > 16){
+        len = strlen(tok) + 1;
+        if (i++ == 0)
+        {
+            if (len > 16)
+            {
                 fprintf(stderr, "argument 1: cmd exceeds length");
-                exit(EXIT_FAILURE);
+                return 1;
             }
-            strcpy(key, tok);
+
+            for (size_t i = 0; i < KEYWORDLEN; i++)
+            {
+                if(strcmp(tok,KEYWORDS[i])==0){
+                    strcpy(key,tok);
+                }
+            }
+            if(strlen(key)==0){
+                fprintf(stderr, "no key matching");
+                return 1;
+            }
         }
-        else{
+        else
+        {
             strpath = malloc(len);
             strcpy(strpath, tok);
             *path = strpath;
@@ -161,17 +106,19 @@ int tokenize(char *buf, char *key, const char **path, char *const **args)
         tok = strtok(NULL, " ");
     }
 
-    i=1;
+    // pathargs + filename
+    i = 1;
     while (tok != NULL)
     {
-        str = malloc(strlen(tok)+1);
+        len = strlen(tok) + 1;
+        str = malloc(len);
         strcpy(str, tok);
         arrargs[i++] = str;
         tok = strtok(NULL, " ");
     }
-    arrargs[0] = strrchr(*path, '/')+1;
+    arrargs[0] = strrchr(strpath, '/') == NULL? strpath:strrchr(strpath, '/')+1;
     arrargs[i] = NULL;
-    *args = realloc(arrargs, (i+1)*sizeof(char*));
+    *args = realloc(arrargs, (i + 1) * sizeof(char *));
 
     return 0;
 }
@@ -180,51 +127,54 @@ int main(int argc, char const *argv[])
 {
     char *const *pathargs;
     const char *path;
-    char buf[1000], key[16];
-    int error = 0, index = 1;   //one because pointer shennanigans in tokenize()
+    char buf[1000], key[16] = "\0";
+    int index = 1; // index = 1 because pointer shennanigans in tokenize()
 
     while (1)
     {
         scanf(" %[^\n]", buf);
-        tokenize(buf, key, &path, &pathargs);
+        if (tokenize(buf, key, &path, &pathargs) == 0)
+        {
+            if(getFullPath(pathargs[0], &path) == 0)
+            {
 
-        /*
-        if((error = myInputCheck(buf, &key, &path, &pathargs))){
-            fprintf(stderr, "myInputCheck returned error");
-            error = 0;
+                
+                // only then start forking
+                
+                pid_t cpid;
+                int wstatus;
+                
+                if ((cpid = fork()) == -1)
+                {
+                    perror("fork child");
+                    return 1;
+                }
+                
+                if (cpid == 0)
+                {
+                    if(execv(path, pathargs)) perror("execv");
+                    _exit(0);
+                }
+                else
+                {
+                    if(wait(&wstatus) < 0){
+                        if(WIFEXITED(wstatus)){
+                            puts("wait returned -1");
+                            printf("%d\n",WEXITSTATUS(wstatus));
+                        }
+                    }
+                }
+                
+                while (pathargs[index] != NULL)
+                {
+                    free(pathargs[index++]);
+                }
+                
+                free((char *)pathargs);
+                free((char *)path);
+            }
         }
-        */
-
-        //searchInPathVar(path);  //see static variable PATH for testing
-
-        //only then start forking
-        /*
-        pid_t cpid;
-        
-        if ((cpid=fork())==-1)
-        {
-            perror("fork");
-            return 1;
-        }
-        
-        if (cpid == 1)
-        {
-            execv(path, pathargs);
-            _exit(0);
-        }
-        else
-        {
-            wait(cpid);
-        }
-        */
-        
-        while (pathargs[index] != NULL)
-        {
-            free(pathargs[index++]);
-        }
-        if(error != 10000000)
-        free((char*)pathargs);
-        free((char*)path);
+        puts("end of loop successful");
     }
 }
 
@@ -265,17 +215,16 @@ while ((opt = getopt(argc, (char * const *)argv, "hvfo:n:")) != -1) {
             return 1;
         }
     }
-    
+
     printf("Options:\n");
     printf("  verbose = %d\n", verbose);
     printf("  flag_f  = %d\n", flag_f);
     printf("  outfile = %s\n", outfile ? outfile : "(none)");
     printf("  number  = %ld\n", number);
-    
+
     if (optind < argc) {
         printf("Arguments:\n");
         for (int i = optind; i < argc; ++i)
         printf("  %s\n", argv[i]);
     }
     */
-
