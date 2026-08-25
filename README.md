@@ -1,16 +1,18 @@
 # notes
 
-- FIRST OF ALL, there must be builtin command KEYWORDS that only exists for my shell:
-The first ones included should be: chdir(changedirectory), exec(execute a bin/script or open a txtfile)
+Interpret commandline input via predefined keywords such as "|", "exec", etc.
+The user input string is traversed and tokenized as long as there is a | argument found.
+This is handled via constant globals like "pipeflag" to set as while condition.
+After each loop the variables must be freed and reassigned with the new program and arguments strings.
 
 ## Read input
 
-- first i need to seperate the execution program from the argument part of the cmd prompted by user.
-For this reason i chose the keyword "exec" as the option for taking a mandatory file argument.
-So ill have to first make sure its a file that can be executed aka. binary, sript.
-The 2nd problem is the arguments must be somehow piped to the bin/script being exectuted.
-To check if exec *argument* is indeed a file, ill use dirent to find it in my experimental testbin directory.
+Parse commands found in Keyvalidation and tokenize into the Path and Pathargs variables.
+This is mostly done using strtok() and requiring the user to follow standard rules on commandline usage.
 
 ## Execute input
 
-## Print result
+CallChild first forks, then pipes stdout of child to stdin of its parent as long as the pipeflag is set.
+Meanwhile the output of the child buffered in stdin.
+If the pipeflag is not set, the child executes the program and uses the inputbuffer as its input without
+piping the output, printing the result to screen.
