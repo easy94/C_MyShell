@@ -16,6 +16,7 @@ enum KEYS
 };
 
 unsigned char pipeflag = 0;
+char * pipestr = "|";
 
 static const char *KEYWORDS[3] =
     {
@@ -66,24 +67,27 @@ int getFullPath(char *target, const char **out)
     return 1;
 }
 
-int validateKeyAndAdvbufptr(char **key_out, char **buf)
+int validateKeyAndAdvbufptr(char *key_out, char **buf)
 {
-    size_t len = strlen(key_out);
-    if(len > 15 || len == 0)
-        return 1
-    ;
     char arg[16];
     int k = 0;
-    while (*buf[k] != " " && *buf[k] != '\0')
-        arg[k] = *buf[k]
+    while ((*buf)[k] != ' ' && (*buf)[k] != '\0'){
+        arg[k] = (*buf)[k];
+        k++;
+    }
+
+    arg[k] = '\0';
+
+    if(k > 15 || k == 0)
+        return 1
     ;
 
     for (size_t i = 0; i < KEYWORDLEN; i++)
     {
         if (strcmp(arg, KEYWORDS[i]) == 0)
         {
-            strcpy(*key_out, arg);
-            *buf = *(buf+(len+1));
+            strcpy(key_out, arg);
+            *buf = (*buf+(k+1));
             return 0;
         }
     }
@@ -94,62 +98,86 @@ int validateKeyAndAdvbufptr(char **key_out, char **buf)
 
 int tokenize(char **buf, const char **path_out, char *const **args_out)
 {
-    const char **arrargs = malloc(sizeof(char *) * 32);
-    char *strpath, *str;
-    int i = 1;
     size_t len = 0;
-    char *tok;
-    unsigned int advbufsum=0; 
-    //path
-    char *bufcpy;           //dont touch buf cause we need it to traverse through all pipes
+    char *strpath;
+
+    //
+    char bufcpy[1000];
+    unsigned int ptradvcntr=0;
     strcpy(bufcpy, *buf);
+    
+    char *tok;
     tok = strtok(bufcpy, " ");
     len = strlen(tok)+1;
-    strpath = malloc(len);          //*******
-    strcpy(strpath, tok);
+    ptradvcntr += len;
 
+    /* PATH PTR ASSIGNMENT << */
+    strpath = malloc(len);
+    strcpy(strpath, tok);
     *path_out = strpath;
     
-    // pathargs + filename
-    tok = strtok(NULL, " ");            //advance the strtok and keep going with it 0|0str
-    while (tok != NULL && tok != "|")
+    // PATHARGS PTR ASSIGNMENT AND PTR TO PATH AT PATHARGS[0] (CONVENTION)
+
+    const char **arguments = malloc(sizeof(char *) * 32);
+    char *args_element;
+
+    if((tok = strtok(NULL, " ")) != NULL)
     {
-        len = strlen(tok) + 1;
-        advbufsum += len;
-        str = malloc(len);
-        strcpy(str, tok);
-        arrargs[i++] = str;
-        tok = strtok(NULL, " ");
+        len = strlen(tok)+1;
+        ptradvcntr += len;
     }
 
-    if(tok == "|"){
-        pipeflag = 1;
+    int i = 1;
+    while (tok != NULL && strcmp(tok, pipestr) != 0)
+    {
+        args_element = malloc(len);
+        strcpy(args_element, tok);
+        arguments[i] = args_element;
+
+        if((tok = strtok(NULL, " ")) != NULL)
+        {
+            len = strlen(tok) + 1;
+            ptradvcntr += len;
+        }
+        i++;
     }
-    else{
+    
+    if(tok == NULL)
+    {
         pipeflag = 0;
     }
-    arrargs[0] = strrchr(strpath, '/') == NULL? strpath:strrchr(strpath, '/')+1;
-    arrargs[i] = NULL;
-    *args_out = realloc(arrargs, (i + 1) * sizeof(char *));
-    *buf = *(buf+(advbufsum));
+    else if(strcmp(tok, pipestr)==0)
+    {
+        pipeflag = 1;
+    }
+    else
+    {
+        pipeflag = 0;
+    }
+
+    arguments[0] = strrchr(strpath, '/') == NULL? strpath:strrchr(strpath, '/')+1;
+    arguments[i] = NULL;
+    *args_out = realloc(arguments, (i + 1) * sizeof(char *));
+    *buf = (*buf+(ptradvcntr));
 
     return 0;
 }
 
 void cleanUp(char *const **pathargs, const char **path)
 {
+    // PATHARGS[0] is same ptr as PATH 
     int index = 1;
 
-    while(*pathargs[index] != NULL)
+    while((*pathargs)[index] != NULL)
     {
-        free(*pathargs[index++]);
+        free((*pathargs)[index++]);
     }
     free((char *)*pathargs);
     free((char *)*path);
 
 }
 
-void callChild(char *const **pathargs, const char **path)
+int callChild(char *const **pathargs, const char **path)
 {
     int pfd[2];
     pid_t cpid;
@@ -191,6 +219,7 @@ void callChild(char *const **pathargs, const char **path)
             }
         }
     }
+    return 0;
 }
 
 int main(int argc, char const *argv[])
@@ -198,9 +227,8 @@ int main(int argc, char const *argv[])
     char *const *pathargs;
     const char *path;
     char buf[1000], key[16] = "\0";
-    int index = 1; // index = 1 because pointer shennanigans in tokenize()
     char *bufptr;
-    int keyswitch;
+    int keyswitch = -1;
 
     while (1)
     {
@@ -208,7 +236,7 @@ int main(int argc, char const *argv[])
         key[0] = '\0';
         scanf(" %[^\n]", buf);
         bufptr = buf;
-        if (validateKeyAndAdvbufptr(&key, &bufptr) != 0)
+        if ((keyswitch = validateKeyAndAdvbufptr(key, &bufptr)) != 0)
         {
             continue;
         }
@@ -220,7 +248,7 @@ int main(int argc, char const *argv[])
             {
                 tokenize(&bufptr, &path, &pathargs);
                 getFullPath(pathargs[0], &path);
-                callChild(&path, &pathargs);
+                callChild(&pathargs, &path);
                 cleanUp(&pathargs, &path);
 
             } while (pipeflag);
@@ -232,6 +260,8 @@ int main(int argc, char const *argv[])
             abort();
             break;
         default:
+            fprintf(stderr, "keyswitch reached default case");
+            return 1;
             break;
         }
 
