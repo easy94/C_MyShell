@@ -10,11 +10,11 @@
 
 enum OPERATOR
 {
-    REGULAR = 0,
-    PIPE = 1,
-    REDIRECT_TO = 2,
-    REDIRECT_FROM = 3,
-    APPEND_TO = 4,
+    PIPE = 0,
+    REDIRECT_TO = 1,
+    REDIRECT_FROM = 2,
+    APPEND_TO = 3,
+    REGULAR = 4,
 };
 
 enum BUILTIN
@@ -32,7 +32,12 @@ static const char *BUILTINS[3] =
 };
 static const size_t BUILTINS_LEN = 3;
 
+static const char *OPERATORS[5] =
+{
+    "|", ">", "<", ">>", ""
+};
 
+static const size_t OPERATORS_LEN = 5;
 
 int expandPathVar(char *target, const char **out)
 {
@@ -134,6 +139,18 @@ typedef struct {
     char *const *args;      //program arguments and options
 }Token;
 
+int isRedirectOp(char *tok)
+{
+    for (size_t i = 0; i < OPERATORS_LEN; i++)
+    {
+        if (strcmp(tok, OPERATORS[i]) == 0)
+        {
+            return i;
+        }
+    }
+    return 0;
+}
+
 int tokenize(char **buf, Token ***token_list)
 {
     int k = 0;                  //loop counter and cmd counter = i+1
@@ -147,66 +164,66 @@ int tokenize(char **buf, Token ***token_list)
     char *tok;
     tok = strtok(bufcpy, " ");
     len = strlen(tok)+1;
-
-    char *progpath;
+    char *progpath = malloc(len);
+    strcpy(progpath, tok);
+    tokens[0].path = progpath;
+    
     const char **arguments;
+    char *args_element;
+    
+    
     int loop_conditional = 0;
-
     while (loop_conditional == 0)
     {
-
-        // PATHARGS PTR ASSIGNMENT
-        char *args_element;
-        arguments = malloc(sizeof(char *) * 32);
-
-        if(strcmp(tok, "|"))
+        if(progpath == NULL) //set it null after each iteration
         {
-            tok = strtok(NULL, " ");
             len = strlen(tok)+1;
             progpath = malloc(len);
             strcpy(progpath, tok);
             tokens[k].path = progpath;
         }
-
-        tok = strtok(NULL, " ");
-        int i = 1;
-        while (tok != NULL && strcmp(tok, "|") != 0)
+        
+        if((tok = strtok(NULL, " ")) == NULL)
         {
-            if(strcmp(tok, ">>") && strcmp(tok, ">") && strcmp(tok, "<"))
+            tokens[k].type = REGULAR;
+            break;
+        }
+        
+        int key = REGULAR;
+        arguments = malloc(sizeof(char *) * 32);
+        int i = 1;
+        while (tok != NULL)
+        {
+            if ((key = isRedirectOp(tok)))
             {
+                tokens[k].type = key;
                 tok = strtok(NULL, " ");
+                len = strlen(tok) + 1;
+                args_element = malloc(len);
+                strcpy(args_element, tok);
+                arguments[++i] = args_element;
+                break;
+            }
+            else if((key = strcmp(tok, OPERATORS[PIPE])) == 0)
+            {
+                tokens[k].type = PIPE;
+                tok = strtok(NULL, " ");
+                break;
+            }
+            else
+            {
                 len = strlen(tok)+1;
                 args_element = malloc(len);
                 strcpy(args_element, tok);
                 arguments[i] = args_element;
-            }
-            else{
-                args_element = malloc(len);
-                strcpy(args_element, tok);
-                arguments[i] = args_element;
-            }
-
-            if ((tok = strtok(NULL, " ")) != NULL)
-            {
-                len = strlen(tok) + 1;
-            }
-            i++;
-        }
-
-        // find out which case in the while triggered break;
-        tokens[k].type = 0; // in case nothing matches therefore tok was NULL and loop_conditional is set to 1
-        int key = 0;
-        for (size_t i = 0; i < BUILTINS_LEN; i++)
-        {
-            if (strcmp(tok, BUILTINS[i]) == 0)
-            {
-                key = i + 1;
-                tokens[k].type = i+1;
+                tok = strtok(NULL, " ");
+                i++;
             }
         }
-        
+
         char *progname_ptr = strrchr(progpath, '/') == NULL ? progpath : strrchr(progpath, '/') + 1;
         char *progname = strdup(progname_ptr);
+
         arguments[0] = progname;
         arguments[i] = NULL;
         tokens[k].args = realloc(arguments, (i + 1) * sizeof(char *));
@@ -216,25 +233,12 @@ int tokenize(char **buf, Token ***token_list)
         case PIPE:
             loop_conditional = 0;
             break;
-        case REDIRECT_FROM:
-            if(tok == NULL)
-            {
-                loop_conditional = 1;
-            }
-            else
-                loop_conditional = 0;
-            break;
-        case REDIRECT_TO:
-            loop_conditional = 1;
-            break;
-        case APPEND_TO:
-            loop_conditional = 1;
-            break;
         default:
-            abort();
+            loop_conditional = 1;
             break;
         }
 
+        progpath = NULL;
         k++;
     }
 
