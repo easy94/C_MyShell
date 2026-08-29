@@ -8,25 +8,33 @@
 #include <dirent.h>
 #include <sys/wait.h>
 
-enum KEYS
+enum OPERATOR
+{
+    REGULAR = 0,
+    PIPE = 1,
+    REDIRECT_TO = 2,
+    REDIRECT_FROM = 3,
+    APPEND_TO = 4,
+};
+
+enum BUILTIN
 {
     EXEC = 0,
     CHDIR = 1,
     EXIT_APP = 2,
 };
 
-unsigned char pipeflag = 0;
-char * pipestr = "|";
-
-static const char *KEYWORDS[3] =
+static const char *BUILTINS[3] =
     {
         "exec",  // execute bin/script    0
         "chdir", // change directory      1
         "exit"   // exit program          2
 };
-static const size_t KEYWORDLEN = 3;
+static const size_t BUILTINS_LEN = 3;
 
-int getFullPath(char *target, const char **out)
+
+
+int expandPathVar(char *target, const char **out)
 {
     DIR *dir;
     struct dirent *entry;
@@ -40,11 +48,16 @@ int getFullPath(char *target, const char **out)
             return 1;
         }
 
+
+        /*
+            SOMEWHERE HERE HAS TO BE CHECKED IF THE SPECIFIED PATH IS ALREADY A FULL PATH THAT POINTS TO A
+            PROGRAM OUTSIDE OF PATH VAR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        */
+
         errno = 0;
         while ((entry = readdir(dir)) != NULL)
         {
             if (entry->d_type == DT_REG && strcmp(entry->d_name, target)==0){
-                puts("found");
                 fullpath = malloc(strlen(str)+strlen(target)+1);
                 strcpy(fullpath, strcat(strcat(str, "/"), target));
                 free((char*)*out);
@@ -67,6 +80,12 @@ int getFullPath(char *target, const char **out)
     return 1;
 }
 
+int getFullPath()
+{
+
+    return 0;
+}
+
 int validateKeyAndAdvbufptr(char *key_out, char **buf)
 {
     char arg[16];
@@ -82,9 +101,9 @@ int validateKeyAndAdvbufptr(char *key_out, char **buf)
         return 1
     ;
 
-    for (size_t i = 0; i < KEYWORDLEN; i++)
+    for (size_t i = 0; i < BUILTINS_LEN; i++)
     {
-        if (strcmp(arg, KEYWORDS[i]) == 0)
+        if (strcmp(arg, BUILTINS[i]) == 0)
         {
             strcpy(key_out, arg);
             *buf = (*buf+(k+1));
@@ -92,82 +111,149 @@ int validateKeyAndAdvbufptr(char *key_out, char **buf)
         }
     }
 
-    fprintf(stderr, "no keyword matching");
+    fprintf(stderr, "no keyword matching\n");
     return 1;
 }
 
-int tokenize(char **buf, const char **path_out, char *const **args_out)
-{
-    size_t len = 0;
-    char *strpath;
+//make a struct here. first im reading typedef
+typedef struct {
+    char *file_in;      // NULL equals stdin
+    char *file_out;     // NULL equals stdout
+    char *cmd;          //the program to execute
+    char **args;        //the argv arr
+    int append_flag;
+}Command;
 
-    //
+typedef struct {
+    Command cmd;
+}Pipe;
+
+typedef struct {
+    int type;               //see OPERATOR enum
+    const char *path;       //program name path
+    char *const *args;      //program arguments and options
+}Token;
+
+int tokenize(char **buf, Token ***token_list)
+{
+    int k = 0;                  //loop counter and cmd counter = i+1
+    size_t len = 0;             //utility variable. '\0' is included
+
+    Token tokens[25];
+
     char bufcpy[1000];
-    unsigned int ptradvcntr=0;
     strcpy(bufcpy, *buf);
     
     char *tok;
     tok = strtok(bufcpy, " ");
     len = strlen(tok)+1;
-    ptradvcntr += len;
 
-    /* PATH PTR ASSIGNMENT << */
-    strpath = malloc(len);
-    strcpy(strpath, tok);
-    *path_out = strpath;
-    
-    // PATHARGS PTR ASSIGNMENT AND PTR TO PATH AT PATHARGS[0] (CONVENTION)
+    char *progpath;
+    const char **arguments;
+    int loop_conditional = 0;
 
-    const char **arguments = malloc(sizeof(char *) * 32);
-    char *args_element;
-
-    if((tok = strtok(NULL, " ")) != NULL)
+    while (loop_conditional == 0)
     {
-        len = strlen(tok)+1;
-        ptradvcntr += len;
-    }
 
-    int i = 1;
-    while (tok != NULL && strcmp(tok, pipestr) != 0)
-    {
-        args_element = malloc(len);
-        strcpy(args_element, tok);
-        arguments[i] = args_element;
+        // PATHARGS PTR ASSIGNMENT
+        char *args_element;
+        arguments = malloc(sizeof(char *) * 32);
 
-        if((tok = strtok(NULL, " ")) != NULL)
+        if(strcmp(tok, "|"))
         {
-            len = strlen(tok) + 1;
-            ptradvcntr += len;
+            tok = strtok(NULL, " ");
+            len = strlen(tok)+1;
+            progpath = malloc(len);
+            strcpy(progpath, tok);
+            tokens[k].path = progpath;
         }
-        i++;
-    }
-    
-    if(tok == NULL)
-    {
-        pipeflag = 0;
-    }
-    else if(strcmp(tok, pipestr)==0)
-    {
-        pipeflag = 1;
-    }
-    else
-    {
-        pipeflag = 0;
+
+        tok = strtok(NULL, " ");
+        int i = 1;
+        while (tok != NULL && strcmp(tok, "|") != 0)
+        {
+            if(strcmp(tok, ">>") && strcmp(tok, ">") && strcmp(tok, "<"))
+            {
+                tok = strtok(NULL, " ");
+                len = strlen(tok)+1;
+                args_element = malloc(len);
+                strcpy(args_element, tok);
+                arguments[i] = args_element;
+            }
+            else{
+                args_element = malloc(len);
+                strcpy(args_element, tok);
+                arguments[i] = args_element;
+            }
+
+            if ((tok = strtok(NULL, " ")) != NULL)
+            {
+                len = strlen(tok) + 1;
+            }
+            i++;
+        }
+
+        // find out which case in the while triggered break;
+        tokens[k].type = 0; // in case nothing matches therefore tok was NULL and loop_conditional is set to 1
+        int key = 0;
+        for (size_t i = 0; i < BUILTINS_LEN; i++)
+        {
+            if (strcmp(tok, BUILTINS[i]) == 0)
+            {
+                key = i + 1;
+                tokens[k].type = i+1;
+            }
+        }
+        
+        char *progname_ptr = strrchr(progpath, '/') == NULL ? progpath : strrchr(progpath, '/') + 1;
+        char *progname = strdup(progname_ptr);
+        arguments[0] = progname;
+        arguments[i] = NULL;
+        tokens[k].args = realloc(arguments, (i + 1) * sizeof(char *));
+
+        switch (key)
+        {
+        case PIPE:
+            loop_conditional = 0;
+            break;
+        case REDIRECT_FROM:
+            if(tok == NULL)
+            {
+                loop_conditional = 1;
+            }
+            else
+                loop_conditional = 0;
+            break;
+        case REDIRECT_TO:
+            loop_conditional = 1;
+            break;
+        case APPEND_TO:
+            loop_conditional = 1;
+            break;
+        default:
+            abort();
+            break;
+        }
+
+        k++;
     }
 
-    arguments[0] = strrchr(strpath, '/') == NULL? strpath:strrchr(strpath, '/')+1;
-    arguments[i] = NULL;
-    *args_out = realloc(arguments, (i + 1) * sizeof(char *));
-    *buf = (*buf+(ptradvcntr));
+    Token *tokken = malloc(sizeof(Token)*(k+1));
+    for (size_t i = 0; i < k; i++)
+    {
+        tokken[i].args = tokens[i].args;
+        tokken[i].path = tokens[i].path;
+        tokken[i].type = tokens[i].type;
+    }
+    
 
     return 0;
 }
 
 void cleanUp(char *const **pathargs, const char **path)
 {
-    // PATHARGS[0] is same ptr as PATH 
-    int index = 1;
-
+    int index = 0;
+    
     while((*pathargs)[index] != NULL)
     {
         free((*pathargs)[index++]);
@@ -177,7 +263,7 @@ void cleanUp(char *const **pathargs, const char **path)
 
 }
 
-int callChild(char *const **pathargs, const char **path)
+int pipeExec(char *const **pathargs, const char **path)
 {
     int pfd[2];
     pid_t cpid;
@@ -192,22 +278,18 @@ int callChild(char *const **pathargs, const char **path)
 
     if (cpid == 0)
     {
-        if(pipeflag)
-        {
-            dup2(pfd[1], STDOUT_FILENO);
-        }
+        dup2(pfd[1], STDOUT_FILENO);
         close(pfd[0]);
         close(pfd[1]);
-        if (execv(*path, *pathargs))
-            perror("execv");
+        execv(*path, *pathargs);
+
+        perror("execv");
         _exit(0);
     }
     else
     {
-        if(pipeflag)
-        {
-            dup2(pfd[0], STDIN_FILENO);
-        }
+
+        dup2(pfd[0], STDIN_FILENO);
         close(pfd[0]);
         close(pfd[1]);
         if (wait(&wstatus) < 0)
@@ -224,11 +306,12 @@ int callChild(char *const **pathargs, const char **path)
 
 int main(int argc, char const *argv[])
 {
+    Token **token_ptrs;
     char *const *pathargs;
     const char *path;
     char buf[1000], key[16] = "\0";
     char *bufptr;
-    int keyswitch = -1;
+    int keyswitch;
 
     while (1)
     {
@@ -246,15 +329,15 @@ int main(int argc, char const *argv[])
         case EXEC:
             do
             {
-                tokenize(&bufptr, &path, &pathargs);
-                getFullPath(pathargs[0], &path);
-                callChild(&pathargs, &path);
+                tokenize(&bufptr, &token_ptrs);
+                expandPathVar(pathargs[0], &path);
+                pipeExec(&pathargs, &path);
                 cleanUp(&pathargs, &path);
 
-            } while (pipeflag);
+            } while (1);
             break;
         case CHDIR:
-            
+
             break;
         case EXIT_APP:
             abort();
