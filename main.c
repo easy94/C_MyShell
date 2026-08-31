@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 
 enum OPERATOR
 {
@@ -32,6 +33,27 @@ static const char *BUILTINS[3] =
 };
 static const size_t BUILTINS_LEN = 3;
 
+typedef struct
+{
+    char *file_in;  // NULL equals stdin
+    char *file_out; // NULL equals stdout
+    char *cmd;      // the program to execute
+    char **args;    // the argv arr
+    int append_flag;
+} Command;
+
+typedef struct
+{
+    Command cmd;
+} Pipe;
+
+typedef struct
+{
+    int type;          // see OPERATOR enum
+    const char *path;  // program name path
+    char *const *args; // program arguments and options
+} Token;
+
 static const char *OPERATORS[5] =
 {
     "|", ">", "<", ">>", ""
@@ -39,27 +61,31 @@ static const char *OPERATORS[5] =
 
 static const size_t OPERATORS_LEN = 5;
 
+
 int expandPathVar(char *target, const char **out)
 {
-    DIR *dir;
-    struct dirent *entry;
-    char *path = strdup(getenv("PATH"));
-    char *str = strtok(path, ":");
-    char *fullpath;
-    while (str != NULL)
+    if(validatePath(*out))  //if the path already points to a correct program
     {
-        if ((dir = opendir(str)) == NULL){
-            perror("opendir");
-            return 1;
-        }
+        free((char*)*out);
+        *out = realpath(*out, NULL);
+        return 0;
+    }
+    else
+    {
+        DIR *dir;
+        struct dirent *entry;
+        char *path = strdup(getenv("PATH"));
+        char *str = strtok(path, ":");
+        char *fullpath;
+        
+        while (str != NULL)
+        {
+            if ((dir = opendir(str)) == NULL){
+                perror("opendir");
+                return 1;
+            }
 
-
-        /*
-            SOMEWHERE HERE HAS TO BE CHECKED IF THE SPECIFIED PATH IS ALREADY A FULL PATH THAT POINTS TO A
-            PROGRAM OUTSIDE OF PATH VAR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        */
-
-        errno = 0;
+           errno = 0;
         while ((entry = readdir(dir)) != NULL)
         {
             if (entry->d_type == DT_REG && strcmp(entry->d_name, target)==0){
@@ -71,12 +97,12 @@ int expandPathVar(char *target, const char **out)
                 return 0;
             }
         }
-
+        
         if (errno != 0){
             perror("readdir");
             errno = 0;
         }
-
+        
         closedir(dir);
         str = strtok(NULL, ":");
     }
@@ -84,11 +110,18 @@ int expandPathVar(char *target, const char **out)
     fprintf(stderr, "specified file does'nt exist\n");
     return 1;
 }
+}
 
-int getFullPath()
+int validatePath(char *path)
 {
-
-    return 0;
+    int fd;
+    if((fd = open(path, O_RDONLY)) < 0)
+    {
+        errno = 0;
+        return 0;
+    }
+    close(fd);
+    return 1;
 }
 
 int validateKeyAndAdvbufptr(char *key_out, char **buf)
@@ -120,25 +153,6 @@ int validateKeyAndAdvbufptr(char *key_out, char **buf)
     return 1;
 }
 
-//make a struct here. first im reading typedef
-typedef struct {
-    char *file_in;      // NULL equals stdin
-    char *file_out;     // NULL equals stdout
-    char *cmd;          //the program to execute
-    char **args;        //the argv arr
-    int append_flag;
-}Command;
-
-typedef struct {
-    Command cmd;
-}Pipe;
-
-typedef struct {
-    int type;               //see OPERATOR enum
-    const char *path;       //program name path
-    char *const *args;      //program arguments and options
-}Token;
-
 int isRedirectOp(char *tok)
 {
     for (size_t i = 0; i < OPERATORS_LEN; i++)
@@ -151,7 +165,7 @@ int isRedirectOp(char *tok)
     return 0;
 }
 
-int tokenize(char **buf, Token ***token_list)
+int tokenize(char **buf, Token **token_list_out[], size_t *len_out)
 {
     int k = 0;                  //loop counter and cmd counter = i+1
     size_t len = 0;             //utility variable. '\0' is included
@@ -242,14 +256,15 @@ int tokenize(char **buf, Token ***token_list)
         k++;
     }
 
-    Token *tokken = malloc(sizeof(Token)*(k+1));
+    Token *tokken[] = malloc(sizeof(Token)*(k+1));
     for (size_t i = 0; i < k; i++)
     {
-        tokken[i].args = tokens[i].args;
-        tokken[i].path = tokens[i].path;
-        tokken[i].type = tokens[i].type;
+        tokken[i]->args = tokens[i].args;
+        tokken[i]->path = tokens[i].path;
+        tokken[i]->type = tokens[i].type;
     }
-    
+    *token_list_out = tokken;
+    *len_out = k;
 
     return 0;
 }
@@ -267,7 +282,8 @@ void cleanUp(char *const **pathargs, const char **path)
 
 }
 
-int pipeExec(char *const **pathargs, const char **path)
+//
+int ExecCmds(Token *tokens[], size_t *index)
 {
     int pfd[2];
     pid_t cpid;
@@ -285,7 +301,7 @@ int pipeExec(char *const **pathargs, const char **path)
         dup2(pfd[1], STDOUT_FILENO);
         close(pfd[0]);
         close(pfd[1]);
-        execv(*path, *pathargs);
+        execv(tokens[*index]->path, tokens[*index]->path);
 
         perror("execv");
         _exit(0);
@@ -310,7 +326,8 @@ int pipeExec(char *const **pathargs, const char **path)
 
 int main(int argc, char const *argv[])
 {
-    Token **token_ptrs;
+    Token *token_ptrs[1];
+    size_t token_len;
     char *const *pathargs;
     const char *path;
     char buf[1000], key[16] = "\0";
@@ -333,9 +350,14 @@ int main(int argc, char const *argv[])
         case EXEC:
             do
             {
-                tokenize(&bufptr, &token_ptrs);
+                tokenize(&bufptr, &token_ptrs, &token_len);
                 expandPathVar(pathargs[0], &path);
-                pipeExec(&pathargs, &path);
+                
+                for (size_t i = 0; i < token_len; i++)
+                {
+                    
+                }
+                
                 cleanUp(&pathargs, &path);
 
             } while (1);
