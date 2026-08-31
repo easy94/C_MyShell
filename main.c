@@ -15,7 +15,7 @@ enum OPERATOR
     REDIRECT_TO = 1,
     REDIRECT_FROM = 2,
     APPEND_TO = 3,
-    REGULAR = 4,
+    WORD = 4,
 };
 
 enum BUILTIN
@@ -24,6 +24,7 @@ enum BUILTIN
     CHDIR = 1,
     EXIT_APP = 2,
 };
+static const int MAXSIZE = 15;
 
 static const char *BUILTINS[3] =
     {
@@ -38,20 +39,20 @@ typedef struct
     char *file_in;  // NULL equals stdin
     char *file_out; // NULL equals stdout
     char *cmd;      // the program to execute
-    char **args;    // the argv arr
+    char *const *args;    // the argv arr
     int append_flag;
 } Command;
 
 typedef struct
 {
-    Command cmd;
+    Command cmd[MAXSIZE];
+    int cntr;
 } Pipe;
 
 typedef struct
 {
     int type;          // see OPERATOR enum
-    const char *path;  // program name path
-    char *const *args; // program arguments and options
+    const char *name;  // program name path
 } Token;
 
 static const char *OPERATORS[5] =
@@ -61,6 +62,17 @@ static const char *OPERATORS[5] =
 
 static const size_t OPERATORS_LEN = 5;
 
+int checkToken(char *tok)
+{
+    for (size_t i = 0; i < OPERATORS_LEN; i++)
+    {
+        if (strcmp(tok, OPERATORS[i]) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
 
 int expandPathVar(char *target, const char **out)
 {
@@ -153,118 +165,70 @@ int validateKeyAndAdvbufptr(char *key_out, char **buf)
     return 1;
 }
 
-int isRedirectOp(char *tok)
+// NEEDED LATER
+/*
+char *progname_ptr = strrchr(progpath, '/') == NULL ? progpath : strrchr(progpath, '/') + 1;
+char *progname = strdup(progname_ptr);
+*/
+Pipe *assignPipeline(Token *tokens[], int len)
 {
-    for (size_t i = 0; i < OPERATORS_LEN; i++)
+    int cntr = 0;
+    Pipe *pipeline = malloc(sizeof(Pipe));
+    Command *current = &pipeline->cmd[cntr]; 
+
+    for (size_t i = 0; i < len; i++)
     {
-        if (strcmp(tok, OPERATORS[i]) == 0)
+        switch ((*tokens)[i].type)
         {
-            return i;
+        case WORD:
+
+            break;
+        case PIPE:
+
+            break;
+        case REDIRECT_FROM:
+
+            break;
+        case REDIRECT_TO:
+
+            break;
+        case APPEND_TO:
+
+            break;
+        default:
+            break;
         }
     }
-    return 0;
+    return pipeline;
 }
 
 int tokenize(char **buf, Token **token_list_out[], size_t *len_out)
 {
-    int k = 0;                  //loop counter and cmd counter = i+1
-    size_t len = 0;             //utility variable. '\0' is included
-
-    Token tokens[25];
-
+    Token *tokens = malloc(sizeof(Token)*25);
     char bufcpy[1000];
     strcpy(bufcpy, *buf);
-    
-    char *tok;
-    tok = strtok(bufcpy, " ");
-    len = strlen(tok)+1;
-    char *progpath = malloc(len);
-    strcpy(progpath, tok);
-    tokens[0].path = progpath;
-    
-    const char **arguments;
-    char *args_element;
-    
-    
-    int loop_conditional = 0;
-    while (loop_conditional == 0)
+
+    int key, k = 0;
+    char *tok = strtok(bufcpy, " ");
+    while (tok != NULL)
     {
-        if(progpath == NULL) //set it null after each iteration
+
+        if ((key = checkToken(tok)) == WORD)
         {
-            len = strlen(tok)+1;
-            progpath = malloc(len);
-            strcpy(progpath, tok);
-            tokens[k].path = progpath;
+            tokens[k].name = strdup(tok);
+            tokens[k].type = WORD;
         }
-        
-        if((tok = strtok(NULL, " ")) == NULL)
+        else
         {
-            tokens[k].type = REGULAR;
-            break;
-        }
-        
-        int key = REGULAR;
-        arguments = malloc(sizeof(char *) * 32);
-        int i = 1;
-        while (tok != NULL)
-        {
-            if ((key = isRedirectOp(tok)))
-            {
-                tokens[k].type = key;
-                tok = strtok(NULL, " ");
-                len = strlen(tok) + 1;
-                args_element = malloc(len);
-                strcpy(args_element, tok);
-                arguments[++i] = args_element;
-                break;
-            }
-            else if((key = strcmp(tok, OPERATORS[PIPE])) == 0)
-            {
-                tokens[k].type = PIPE;
-                tok = strtok(NULL, " ");
-                break;
-            }
-            else
-            {
-                len = strlen(tok)+1;
-                args_element = malloc(len);
-                strcpy(args_element, tok);
-                arguments[i] = args_element;
-                tok = strtok(NULL, " ");
-                i++;
-            }
+            tokens[k].type = key;
         }
 
-        char *progname_ptr = strrchr(progpath, '/') == NULL ? progpath : strrchr(progpath, '/') + 1;
-        char *progname = strdup(progname_ptr);
-
-        arguments[0] = progname;
-        arguments[i] = NULL;
-        tokens[k].args = realloc(arguments, (i + 1) * sizeof(char *));
-
-        switch (key)
-        {
-        case PIPE:
-            loop_conditional = 0;
-            break;
-        default:
-            loop_conditional = 1;
-            break;
-        }
-
-        progpath = NULL;
+        tok = strtok(NULL, " ");
         k++;
     }
 
-    Token *tokken[] = malloc(sizeof(Token)*(k+1));
-    for (size_t i = 0; i < k; i++)
-    {
-        tokken[i]->args = tokens[i].args;
-        tokken[i]->path = tokens[i].path;
-        tokken[i]->type = tokens[i].type;
-    }
-    *token_list_out = tokken;
-    *len_out = k;
+    *token_list_out = realloc(tokens, sizeof(Token)*(k+1));
+    *len_out = k+1;
 
     return 0;
 }
@@ -282,45 +246,9 @@ void cleanUp(char *const **pathargs, const char **path)
 
 }
 
-//
 int ExecCmds(Token *tokens[], size_t *index)
 {
-    int pfd[2];
-    pid_t cpid;
-    int wstatus;
-    pipe(pfd);
-
-    if ((cpid = fork()) == -1)
-    {
-        perror("fork child");
-        return 1;
-    }
-
-    if (cpid == 0)
-    {
-        dup2(pfd[1], STDOUT_FILENO);
-        close(pfd[0]);
-        close(pfd[1]);
-        execv(tokens[*index]->path, tokens[*index]->path);
-
-        perror("execv");
-        _exit(0);
-    }
-    else
-    {
-
-        dup2(pfd[0], STDIN_FILENO);
-        close(pfd[0]);
-        close(pfd[1]);
-        if (wait(&wstatus) < 0)
-        {
-            if (WIFEXITED(wstatus))
-            {
-                puts("wait returned -1");
-                printf("%d\n", WEXITSTATUS(wstatus));
-            }
-        }
-    }
+   
     return 0;
 }
 
