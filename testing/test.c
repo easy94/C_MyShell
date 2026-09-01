@@ -41,7 +41,6 @@ typedef struct
     char *name;     // program name path
 } Token;
 
-
 Pipe *assignPipeline(Token *tokens[], int len)
 {
     int cntr = 0;
@@ -50,9 +49,11 @@ Pipe *assignPipeline(Token *tokens[], int len)
     for (size_t i = 0; i < 15; i++)
     {
         Command *c = malloc(sizeof(Command));
-        pipeline->cmd[i]=c;                             //these must be all freed afterwards. So: pipeline->cmd->args->allelementsonebyone then: pipeline->cmd->name
+        pipeline->cmd[i]=c;                             //these must be all freed afterwards.//So: pipeline->cmd->args->allelementsonebyone 
+        pipeline->cmd[i]->args = malloc(sizeof(char*));
+        pipeline->cmd[i]->args_capacity = 1;                                               //then: pipeline->cmd->name
     }
-    
+    pipeline->cntr = 1;
     Command *current = pipeline->cmd[cntr];
 
     for (size_t i = 0; i < len; i++)
@@ -63,19 +64,25 @@ Pipe *assignPipeline(Token *tokens[], int len)
             if(argc == 0){
                 current->cmd = tokens[i]->name;
             }
-            else
+            if(current->args_count == current->args_capacity)
             {
-                if(current->args_count == current->args_capacity)
-                {
-                    current->args = realloc(current->args, sizeof(char*)*2*current->args_capacity);
-                }
-                current->args[argc++] = tokens[i]->name;
+                current->args = realloc(current->args, sizeof(char*)*2*current->args_capacity);
+                current->args_capacity *= 2;
             }
+            current->args[argc++] = tokens[i]->name;
+            current->args_count++;
+
             break;
         case PIPE:
+            if(current->args_count == current->args_capacity)
+            {
+                current->args = realloc(current->args, sizeof(char*)*2*current->args_capacity);
+                current->args_capacity *= 2; 
+            }
             current->args[argc] = NULL;
             argc = 0;
             current = pipeline->cmd[++cntr];
+            pipeline->cntr++;
             break;
         case REDIRECT_FROM:
             current->file_in = tokens[++i]->name;
@@ -94,16 +101,75 @@ Pipe *assignPipeline(Token *tokens[], int len)
     return pipeline;
 }
 
+int ExecCmds(Pipe *cmds)
+{
+    size_t len = cmds->cntr;
+    pid_t cid;
+    int wstatus;
+    int fd[2];
+    char *temp;
+
+    for (size_t i = 0; i < len; i++)
+    {
+        cid = fork();
+
+        if (!(cmds->cmd[i]->file_in && cmds->cmd[i]->file_out))
+        {
+            pipe(fd);
+        }
+
+        if (cid == -1)
+        {
+            fprintf(stderr, "-1fork");
+            abort();
+        }
+        
+        if (cid == 0)
+        {
+            if((temp = cmds->cmd[i]->file_in) != NULL)
+            {
+                fd[0] = open(temp, O_RDONLY);
+                dup2(fd[0], STDIN_FILENO);
+            }
+            if (temp = cmds->cmd[i]->file_out != NULL)
+            {
+                fd[1] = open(temp, O_WRONLY);
+                dup2(fd[1], STDOUT_FILENO);
+            }
+            if (!(cmds->cmd[i]->file_in && cmds->cmd[i]->file_out))
+            {
+                dup2(fd[1],STDOUT_FILENO);
+
+            }
+            
+
+            
+        }
+        else
+        {
+            if(!(cmds->cmd[i]->file_in && cmds->cmd[i]->file_out))  //pipe
+            {
+                dup2(fd[0], STDIN_FILENO);      //read from pipes' readend
+
+            }
+        }
+        
+    }
+
+    return 0;
+}
+
 int main(int argc, char const *argv[])
 {
-    size_t len = 4;
-
+    int len = 6;
     Token a = {.name="ls",.type=WORD};
     Token b = {.name="-a",.type=WORD};
+    Token e = {.type = REDIRECT_FROM};
+    Token f = {.name="/", .type=WORD};
     Token c = {.name="",.type=PIPE};
     Token d = {.name="wc",.type=WORD};
 
-    Token *testdata[4] = {&a,&b,&c,&d};
+    Token *testdata[6] = {&a,&b,&e,&f,&c,&d};
 
     assignPipeline(testdata, len);
 

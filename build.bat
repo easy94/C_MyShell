@@ -1,1 +1,0 @@
-gcc -g ./testing/test.c
