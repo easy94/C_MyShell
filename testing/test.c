@@ -9,7 +9,6 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
-
 enum OPERATOR
 {
     PIPE = 0,
@@ -20,10 +19,10 @@ enum OPERATOR
 };
 typedef struct
 {
-    char *file_in;  // NULL equals stdin
-    char *file_out; // NULL equals stdout
-    const char *cmd;      // the program to execute
-    char **args;    // the argv arr
+    char *file_in;   // NULL equals stdin
+    char *file_out;  // NULL equals stdout
+    const char *cmd; // the program to execute
+    char **args;     // the argv arr
     size_t args_count;
     size_t args_capacity;
     int append_flag;
@@ -37,8 +36,8 @@ typedef struct
 
 typedef struct
 {
-    int type;       // see OPERATOR enum
-    char *name;     // program name path
+    int type;   // see OPERATOR enum
+    char *name; // program name path
 } Token;
 
 Pipe *assignPipeline(Token *tokens[], int len)
@@ -49,9 +48,9 @@ Pipe *assignPipeline(Token *tokens[], int len)
     for (size_t i = 0; i < 15; i++)
     {
         Command *c = malloc(sizeof(Command));
-        pipeline->cmd[i]=c;                             //these must be all freed afterwards.//So: pipeline->cmd->args->allelementsonebyone 
-        pipeline->cmd[i]->args = malloc(sizeof(char*));
-        pipeline->cmd[i]->args_capacity = 1;                                               //then: pipeline->cmd->name
+        pipeline->cmd[i] = c; // these must be all freed afterwards.//So: pipeline->cmd->args->allelementsonebyone
+        pipeline->cmd[i]->args = malloc(sizeof(char *));
+        pipeline->cmd[i]->args_capacity = 1; // then: pipeline->cmd->name
     }
     pipeline->cntr = 1;
     Command *current = pipeline->cmd[cntr];
@@ -61,12 +60,13 @@ Pipe *assignPipeline(Token *tokens[], int len)
         switch (tokens[i]->type)
         {
         case WORD:
-            if(argc == 0){
+            if (argc == 0)
+            {
                 current->cmd = tokens[i]->name;
             }
-            if(current->args_count == current->args_capacity)
+            if (current->args_count == current->args_capacity)
             {
-                current->args = realloc(current->args, sizeof(char*)*2*current->args_capacity);
+                current->args = realloc(current->args, sizeof(char *) * 2 * current->args_capacity);
                 current->args_capacity *= 2;
             }
             current->args[argc++] = tokens[i]->name;
@@ -74,10 +74,10 @@ Pipe *assignPipeline(Token *tokens[], int len)
 
             break;
         case PIPE:
-            if(current->args_count == current->args_capacity)
+            if (current->args_count == current->args_capacity)
             {
-                current->args = realloc(current->args, sizeof(char*)*2*current->args_capacity);
-                current->args_capacity *= 2; 
+                current->args = realloc(current->args, sizeof(char *) * 2 * current->args_capacity);
+                current->args_capacity *= 2;
             }
             current->args[argc] = NULL;
             argc = 0;
@@ -104,56 +104,75 @@ Pipe *assignPipeline(Token *tokens[], int len)
 int ExecCmds(Pipe *cmds)
 {
     size_t len = cmds->cntr;
-    pid_t cid;
+    pid_t cid, errid;
     int wstatus;
     int fd[2];
     char *temp;
-
-    for (size_t i = 0; i < len; i++)
+    size_t i;
+    for (i = 0; i < len; i++)
     {
-        cid = fork();
-
-        if (!(cmds->cmd[i]->file_in && cmds->cmd[i]->file_out))
-        {
-            pipe(fd);
-        }
-
-        if (cid == -1)
-        {
-            fprintf(stderr, "-1fork");
+        if(pipe(fd) != 0){
+            fprintf(stderr, "pipe failed");
             abort();
         }
         
-        if (cid == 0)
+        int in = NULL;
+        int out = NULL;
+        cid = fork();
+        switch (cid)
         {
-            if((temp = cmds->cmd[i]->file_in) != NULL)
-            {
-                fd[0] = open(temp, O_RDONLY);
-                dup2(fd[0], STDIN_FILENO);
+        case 0:
+            //check if cmd takes input from file and write it to stdin
+            if((temp = cmds->cmd[i]->file_in) != NULL){
+                if((in = open(cmds->cmd[i]->file_in, O_RDONLY)) < 0){
+                    perror("child_in open");
+                    errno = 0;
+                    abort();
+                }
+                while(read(in, STDIN_FILENO, 4096) > 0);
+                temp = NULL;    //for reuse
             }
-            if (temp = cmds->cmd[i]->file_out != NULL)
+
+            //check if cmd outputs to file instead of piping
+            if (temp = cmds->cmd[i]->file_out != NULL){
+                out = cmds->cmd[i]->append_flag? 
+                    open(temp, O_WRONLY | O_APPEND | O_CREAT, 0722) : open(temp, O_WRONLY | O_TRUNC | O_CREAT, 0722)
+                ;
+                if(out < 0){
+                    perror("child_out open");
+                    errno = 0;
+                    abort();
+                }
+
+                dup2(out, STDOUT_FILENO);
+                temp = NULL;
+            }
+            else // pipe
             {
-                fd[1] = open(temp, O_WRONLY);
                 dup2(fd[1], STDOUT_FILENO);
             }
-            if (!(cmds->cmd[i]->file_in && cmds->cmd[i]->file_out))
-            {
-                dup2(fd[1],STDOUT_FILENO);
-
+            close(fd[0]);
+            execv(cmds->cmd[i]->cmd, cmds->cmd[i]->args);
+            perror("execv child");
+            errno = 0;
+            abort();
+        break;
+        case -1:
+            fprintf(stderr, "fork failed");
+            _exit(EXIT_FAILURE);
+            break;
+        default:
+            if(!cmds->cmd[i]->file_out){
+                dup2(fd[0], STDIN_FILENO);
             }
-            
 
-            
-        }
-        else
-        {
-            if(!(cmds->cmd[i]->file_in && cmds->cmd[i]->file_out))  //pipe
-            {
-                dup2(fd[0], STDIN_FILENO);      //read from pipes' readend
-
+            if(errid =  wait(wstatus)){
+                
             }
+            close(fd[1]);
+            close(fd[0]);
+            break;
         }
-        
     }
 
     return 0;
@@ -162,14 +181,14 @@ int ExecCmds(Pipe *cmds)
 int main(int argc, char const *argv[])
 {
     int len = 6;
-    Token a = {.name="ls",.type=WORD};
-    Token b = {.name="-a",.type=WORD};
+    Token a = {.name = "ls", .type = WORD};
+    Token b = {.name = "-a", .type = WORD};
     Token e = {.type = REDIRECT_FROM};
-    Token f = {.name="/", .type=WORD};
-    Token c = {.name="",.type=PIPE};
-    Token d = {.name="wc",.type=WORD};
+    Token f = {.name = "/", .type = WORD};
+    Token c = {.name = "", .type = PIPE};
+    Token d = {.name = "wc", .type = WORD};
 
-    Token *testdata[6] = {&a,&b,&e,&f,&c,&d};
+    Token *testdata[6] = {&a, &b, &e, &f, &c, &d};
 
     assignPipeline(testdata, len);
 

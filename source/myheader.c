@@ -112,38 +112,53 @@ Pipe *assignPipeline(Token *tokens[], int len)
 {
     int cntr = 0;
     int argc = 0;
-    char *const argv[10];
     Pipe *pipeline = malloc(sizeof(Pipe));
-    Command *current = &pipeline->cmd[cntr]; 
+    for (size_t i = 0; i < 15; i++)
+    {
+        Command *c = malloc(sizeof(Command));
+        pipeline->cmd[i]=c;                             //these must be all freed afterwards.//So: pipeline->cmd->args->allelementsonebyone 
+        pipeline->cmd[i]->args = malloc(sizeof(char*));
+        pipeline->cmd[i]->args_capacity = 1;                                               //then: pipeline->cmd->name
+    }
+    pipeline->cntr = 1;
+    Command *current = pipeline->cmd[cntr];
 
     for (size_t i = 0; i < len; i++)
     {
-        switch ((*tokens)[i].type)
+        switch (tokens[i]->type)
         {
         case WORD:
             if(argc == 0){
-                current[i].cmd = tokens[i]->name;
+                current->cmd = tokens[i]->name;
             }
-            else
+            if(current->args_count == current->args_capacity)
             {
-                *(argv)[argc++] = tokens[i]->name;
+                current->args = realloc(current->args, sizeof(char*)*2*current->args_capacity);
+                current->args_capacity *= 2;
             }
-            
+            current->args[argc++] = tokens[i]->name;
+            current->args_count++;
+
             break;
         case PIPE:
-            *(argv)[argc] = NULL;
+            if(current->args_count == current->args_capacity)
+            {
+                current->args = realloc(current->args, sizeof(char*)*2*current->args_capacity);
+                current->args_capacity *= 2; 
+            }
+            current->args[argc] = NULL;
             argc = 0;
-            cntr++;
-            current = &pipeline->cmd[cntr];
+            current = pipeline->cmd[++cntr];
+            pipeline->cntr++;
             break;
         case REDIRECT_FROM:
-            current[i].file_in = tokens[++i]->name;
+            current->file_in = tokens[++i]->name;
             break;
         case REDIRECT_TO:
-            current[i].file_out = tokens[++i]->name;
+            current->file_out = tokens[++i]->name;
             break;
         case APPEND_TO:
-            current[i].file_out = tokens[++i]->name;
+            current->file_out = tokens[++i]->name;
             break;
         default:
             break;

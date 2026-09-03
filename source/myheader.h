@@ -13,9 +13,9 @@
 #include <fcntl.h>
 #include "myheader.h"
 
-static const int MAXSIZE = 15;
-static const size_t BUILTINS_LEN = 3;
-static const size_t OPERATORS_LEN = 5;
+const int MAXSIZE = 15;
+const size_t BUILTINS_LEN = 3;
+const size_t OPERATORS_LEN = 5;
 
 enum OPERATOR
 {
@@ -37,21 +37,23 @@ typedef struct
 {
     char *file_in;  // NULL equals stdin
     char *file_out; // NULL equals stdout
-    char *cmd;      // the program to execute
-    char *const *args;    // the argv arr
+    const char *cmd;      // the program to execute
+    char **args;    // the argv arr
+    size_t args_count;
+    size_t args_capacity;
     int append_flag;
 } Command;
 
 typedef struct
 {
-    Command *cmd[MAXSIZE];
+    Command *cmd[15];
     int cntr;
 } Pipe;
 
 typedef struct
 {
-    int type;          // see OPERATOR enum
-    const char *name;  // program name path
+    int type;       // see OPERATOR enum
+    char *name;     // program name path
 } Token;
 
 
