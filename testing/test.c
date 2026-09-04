@@ -9,6 +9,56 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
+int expandPathVar(char *target, const char **out)
+{
+    if(validatePath(*out))  //if the path already points to a correct program
+    {
+        free((char*)*out);
+        *out = realpath(*out, NULL);
+        return 0;
+    }
+    else
+    {
+        DIR *dir;
+        struct dirent *entry;
+        char *path = strdup(getenv("PATH"));
+        char *str = strtok(path, ":");
+        char *fullpath;
+        
+        while (str != NULL)
+        {
+            if ((dir = opendir(str)) == NULL){
+                perror("opendir");
+                return 1;
+            }
+
+           errno = 0;
+        while ((entry = readdir(dir)) != NULL)
+        {
+            if (entry->d_type == DT_REG && strcmp(entry->d_name, target)==0){
+                fullpath = malloc(strlen(str)+strlen(target)+1);
+                strcpy(fullpath, strcat(strcat(str, "/"), target));
+                free((char*)*out);
+                *out = fullpath;
+                free (path);
+                return 0;
+            }
+        }
+        
+        if (errno != 0){
+            perror("readdir");
+            errno = 0;
+        }
+        
+        closedir(dir);
+        str = strtok(NULL, ":");
+    }
+    free(path);
+    fprintf(stderr, "specified file does'nt exist\n");
+    return 1;
+}
+}
+
 enum OPERATOR
 {
     PIPE = 0,
@@ -116,25 +166,30 @@ int ExecCmds(Pipe *cmds)
             abort();
         }
         
-        int in = NULL;
-        int out = NULL;
+        int in;
+        int out;
         cid = fork();
         switch (cid)
         {
-        case 0:
+            case 0:
+            char buf[4096];
             //check if cmd takes input from file and write it to stdin
             if((temp = cmds->cmd[i]->file_in) != NULL){
-                if((in = open(cmds->cmd[i]->file_in, O_RDONLY)) < 0){
+
+                if((in = open(temp, O_RDONLY)) < 0){
                     perror("child_in open");
                     errno = 0;
                     abort();
                 }
-                while(read(in, STDIN_FILENO, 4096) > 0);
+                read(in, buf, 4096);
+                printf("%s\n", buf);
+                dup2(in, STDIN_FILENO);
+                printf("%s\n", temp);
                 temp = NULL;    //for reuse
             }
 
             //check if cmd outputs to file instead of piping
-            if (temp = cmds->cmd[i]->file_out != NULL){
+            if ((temp = cmds->cmd[i]->file_out) != NULL){
                 out = cmds->cmd[i]->append_flag? 
                     open(temp, O_WRONLY | O_APPEND | O_CREAT, 0722) : open(temp, O_WRONLY | O_TRUNC | O_CREAT, 0722)
                 ;
@@ -143,7 +198,7 @@ int ExecCmds(Pipe *cmds)
                     errno = 0;
                     abort();
                 }
-
+                printf("IWASHERE");
                 dup2(out, STDOUT_FILENO);
                 temp = NULL;
             }
@@ -166,8 +221,10 @@ int ExecCmds(Pipe *cmds)
                 dup2(fd[0], STDIN_FILENO);
             }
 
-            if(errid =  wait(wstatus)){
-                
+            if((errid =  wait(&wstatus))){
+                if(!WIFEXITED(wstatus)){
+                    perror("errid");
+                }
             }
             close(fd[1]);
             close(fd[0]);
@@ -184,13 +241,19 @@ int main(int argc, char const *argv[])
     Token a = {.name = "ls", .type = WORD};
     Token b = {.name = "-a", .type = WORD};
     Token e = {.type = REDIRECT_FROM};
-    Token f = {.name = "/", .type = WORD};
+    Token f = {.name = "/home/lucas/custom.txt", .type = WORD};
     Token c = {.name = "", .type = PIPE};
     Token d = {.name = "wc", .type = WORD};
 
     Token *testdata[6] = {&a, &b, &e, &f, &c, &d};
 
-    assignPipeline(testdata, len);
+    Pipe *pip = assignPipeline(testdata, len);
+    //i need to replace all programnames with its path before continuing.
+    for (size_t i = 0; i < count; i++)
+    {   
+        expandPathVar(pip->cmd[0].)
+    }
+        ExecCmds(assignPipeline(testdata,len));
 
     return 0;
 }

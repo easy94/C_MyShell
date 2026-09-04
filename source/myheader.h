@@ -11,7 +11,6 @@
 #include <dirent.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-#include "myheader.h"
 
 const int MAXSIZE = 15;
 const size_t BUILTINS_LEN = 3;
