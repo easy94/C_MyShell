@@ -120,6 +120,15 @@ int validateKeyAndAdvbufptr(char *key_out, char **buf)
     return 1;
 }
 
+void checkArgCapacity(Command *curr)
+{
+    if(curr->args_count == curr->args_capacity)
+    {
+        curr->args = realloc(curr->args, sizeof(char*)*2*curr->args_capacity);
+        curr->args_capacity *= 2;
+    }
+}
+
 Pipe *assignPipeline(Token *tokens[], int len)
 {
     int cntr = 0;
@@ -131,6 +140,10 @@ Pipe *assignPipeline(Token *tokens[], int len)
         pipeline->cmd[i] = c;                             //these must be all freed afterwards.//So: pipeline->cmd->args->allelementsonebyone 
         pipeline->cmd[i]->args = malloc(sizeof(char*));
         pipeline->cmd[i]->args_capacity = 1;
+        pipeline->cmd[i]->file_in = NULL;
+        pipeline->cmd[i]->file_out = NULL;
+        pipeline->cmd[i]->args_count = 0;
+        pipeline->cmd[i]->append_flag = 0;
     }
     pipeline->cntr = 1;
     Command *current = pipeline->cmd[cntr];
@@ -143,24 +156,23 @@ Pipe *assignPipeline(Token *tokens[], int len)
             if(argc == 0){
                 current->cmd = tokens[i]->name;
             }
-            if(current->args_count == current->args_capacity)
-            {
-                current->args = realloc(current->args, sizeof(char*)*2*current->args_capacity);
-                current->args_capacity *= 2;
-            }
-            //make individual ptrs for pathofprogram and programname and truncate if user specified fullpath
+            checkArgCapacity(current);
             char *progname_ptr = strrchr(tokens[i]->name, '/') == NULL ? tokens[i]->name : strrchr(tokens[i]->name, '/') + 1;
             char *progname = strdup(progname_ptr);
-            current->args[argc++] = progname;
+            current->args[0] = progname;
+            argc++;
             current->args_count++;
+            if(!(i < len -1)){
+                checkArgCapacity(current);
+                current->args[argc++] = NULL;
+                current->args_count++;
+            }
+            //make individual ptrs for pathofprogram and programname and truncate if user specified fullpath
             break;
         case PIPE:
-            if(current->args_count == current->args_capacity)
-            {
-                current->args = realloc(current->args, sizeof(char*)*2*current->args_capacity);
-                current->args_capacity *= 2; 
-            }
+            checkArgCapacity(current);
             current->args[argc] = NULL;
+            current->args_count++;
             argc = 0;
             current = pipeline->cmd[++cntr];
             pipeline->cntr++;
@@ -170,6 +182,9 @@ Pipe *assignPipeline(Token *tokens[], int len)
             break;
         case REDIRECT_TO:
             current->file_out = tokens[++i]->name;
+            checkArgCapacity(current);
+            current->args[argc++] = NULL;
+            current->args_count++;
             break;
         case APPEND_TO:
             current->file_out = tokens[++i]->name;
@@ -207,29 +222,41 @@ int tokenize(char **buf, Token **token_list_out[], size_t *len_out)
         k++;
     }
 
-    *token_list_out = realloc(*token_list_out, sizeof(Token)*(k));
+    *token_list_out = realloc(*token_list_out, sizeof(Token*)*(k));
     *len_out = k;
 
     return 0;
 }
 
-void cleanUp(Pipe *pipeline)
+void cleanUpTokSucc(Token **tok, size_t tok_len)
 {
-    int i = 0;
-    while(i <= pipeline->cntr)
+    for (size_t i = 0; i < tok_len; i++)
     {
-        int k = 0; 
-        while(pipeline->cmd[i]->args_count < k)
-        {
-            free(pipeline->cmd[i]->args[k]);
-            k++;
-        }
-        if(pipeline->cmd[i]->file_in) free(pipeline->cmd[i]->file_in);
-        if(pipeline->cmd[i]->file_out) free(pipeline->cmd[i]->file_out);
-        free(pipeline->cmd[i]);
-        i++;
+        free(tok[i]);
     }
+    free(tok);
+}
 
+
+void cleanUpTokFail(Token **tok, size_t tok_len)
+{
+    for (size_t i = 0; i < tok_len; i++)
+    {
+        if(tok[i]->type == WORD)
+            free(tok[i]->name);
+
+        free(tok[i]);
+    }
+    free(tok);
+}
+
+void cleanUpPipe(Pipe *pipeline)
+{
+    int l = pipeline->cntr;
+    for (size_t i = 0; i < l; i++)
+    {
+        free(pipeline->cmd[i]->args[0]);
+    }
     free(pipeline);
 }
 
@@ -241,13 +268,18 @@ int execCmds(Pipe *cmds)
     int fd[2];
     char *temp;
     size_t i;
+
+    if(pipe(fd) != 0){
+        fprintf(stderr, "pipe failed");
+        abort();
+    }
+
     for (i = 0; i < len; i++)
     {
-        if(pipe(fd) != 0){
-            fprintf(stderr, "pipe failed");
-            abort();
-        }
-        
+        temp = NULL;
+       /*
+            dup2() makes arg2 become another entry for arg1.
+       */
         int in;
         int out;
         cid = fork();
@@ -257,7 +289,7 @@ int execCmds(Pipe *cmds)
             char buf[4096];
             //check if cmd takes input from file and write it to stdin
             if((temp = cmds->cmd[i]->file_in) != NULL){
-
+                printf("%s\n", temp);
                 if((in = open(temp, O_RDONLY)) < 0){
                     perror("child_in open");
                     errno = 0;
@@ -286,6 +318,7 @@ int execCmds(Pipe *cmds)
             }
             else // pipe
             {
+                dup2(fd[0], STDIN_FILENO);
                 puts("inside child regular condition");
                 if(i < len-1)
                 {
@@ -293,19 +326,23 @@ int execCmds(Pipe *cmds)
                     dup2(fd[1], STDOUT_FILENO);
                 }
             }
+            close(fd[1]);
             close(fd[0]);
             execv(cmds->cmd[i]->cmd, cmds->cmd[i]->args);
             perror("execv child");
             errno = 0;
             abort();
         break;
+
         case -1:
             fprintf(stderr, "fork failed");
             _exit(EXIT_FAILURE);
             break;
+
         default:
-            if(!cmds->cmd[i]->file_out){
-                
+            if(!(i < len - 1)){    //
+                close(fd[0]);
+                close(fd[1]);
             }
 
             if((errid =  wait(&wstatus))){
@@ -313,11 +350,12 @@ int execCmds(Pipe *cmds)
                     perror("errid");
                 }
             }
-            close(fd[1]);
-            close(fd[0]);
+
             break;
         }
     }
+    close(fd[1]);
+    close(fd[0]);
 
     return 0;
 }

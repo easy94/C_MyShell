@@ -27,11 +27,14 @@ int main(int argc, char const *argv[])
                 pip = assignPipeline(token_ptrs, token_len);
                 //find the progname in $PATH, expand and save to cmd->cmd
                 for (size_t i = 0; i < pip->cntr; i++){
-                    if(expandPathVar(pip->cmd[i]->args[0], &pip->cmd[i]->cmd))
-                        goto next; 
+                    if(expandPathVar(pip->cmd[i]->args[0], &pip->cmd[i]->cmd)){
+                        cleanUpTokFail(token_ptrs, token_len); 
+                        goto leave;
+                    }
                 }
                 execCmds(pip);
-                cleanUp(pip);
+                cleanUpTokSucc(token_ptrs, token_len);
+                cleanUpPipe(pip);
             break;
         case CHDIR:
 
@@ -44,7 +47,7 @@ int main(int argc, char const *argv[])
             return 1;
             break;
         }
-        next:
+        leave:
         puts("end of loop successful");
     }
 }

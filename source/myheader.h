@@ -58,7 +58,9 @@ int validatePath(const char *path);
 int validateKeyAndAdvbufptr(char *key_out, char **buf);
 Pipe *assignPipeline(Token *tokens[], int len);
 int tokenize(char **buf, Token ***token_list_out, size_t *len_out);
-void cleanUp(Pipe *pipeline);
+void cleanUpTokFail(Token **tok, size_t tok_len);
+void cleanUpTokSucc(Token **tok, size_t tok_len);
+void cleanUpPipe(Pipe *pipeline);
 int execCmds(Pipe *pipeline);
 
 
