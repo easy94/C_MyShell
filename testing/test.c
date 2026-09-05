@@ -9,6 +9,18 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
+int validatePath(const char *path)
+{
+    int fd;
+    if((fd = open(path, O_RDONLY)) < 0)
+    {
+        errno = 0;
+        return 0;
+    }
+    close(fd);
+    return 1;
+}
+
 int expandPathVar(char *target, const char **out)
 {
     if(validatePath(*out))  //if the path already points to a correct program
@@ -249,11 +261,12 @@ int main(int argc, char const *argv[])
 
     Pipe *pip = assignPipeline(testdata, len);
     //i need to replace all programnames with its path before continuing.
-    for (size_t i = 0; i < count; i++)
-    {   
-        expandPathVar(pip->cmd[0].)
+    for (size_t i = 0; i < pip->cntr; i++)
+    {
+        expandPathVar(pip->cmd[i]->args[0], &pip->cmd[i]->cmd);
     }
-        ExecCmds(assignPipeline(testdata,len));
+    
+    ExecCmds(assignPipeline(testdata,len));
 
     return 0;
 }

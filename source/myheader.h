@@ -12,9 +12,6 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
-const int MAXSIZE = 15;
-const size_t BUILTINS_LEN = 3;
-const size_t OPERATORS_LEN = 5;
 
 enum OPERATOR
 {
@@ -55,30 +52,14 @@ typedef struct
     char *name;     // program name path
 } Token;
 
-
-
-static const char *BUILTINS[3] =
-    {
-        "exec",  // execute bin/script    0
-        "chdir", // change directory      1
-        "exit"   // exit program          2
-};
-
-
-static const char *OPERATORS[5] =
-{
-    "|", ">", "<", ">>", ""
-};
-
-
 int checkToken(char *tok);
 int expandPathVar(char *target, const char **out);
-int validatePath(char *path);
+int validatePath(const char *path);
 int validateKeyAndAdvbufptr(char *key_out, char **buf);
 Pipe *assignPipeline(Token *tokens[], int len);
-int tokenize(char **buf, Token **token_list_out[], size_t *len_out);
-void cleanUp(char *const **pathargs, const char **path);
-int ExecCmds(Token *tokens[], size_t *index);
+int tokenize(char **buf, Token ***token_list_out, size_t *len_out);
+void cleanUp(Pipe *pipeline);
+int execCmds(Pipe *pipeline);
 
 
 #endif // MYHEADER_H

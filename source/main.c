@@ -2,10 +2,9 @@
 
 int main(int argc, char const *argv[])
 {
-    Token *token_ptrs[1];
+    Token **token_ptrs;
     size_t token_len;
-    char *const *pathargs;
-    const char *path;
+    Pipe *pip;
     char buf[1000], key[16] = "\0";
     char *bufptr;
     int keyswitch;
@@ -24,19 +23,15 @@ int main(int argc, char const *argv[])
         switch (keyswitch)
         {
         case EXEC:
-            do
-            {
                 tokenize(&bufptr, &token_ptrs, &token_len);
-                expandPathVar(pathargs[0], &path);
-                
-                for (size_t i = 0; i < token_len; i++)
-                {
-                    
+                pip = assignPipeline(token_ptrs, token_len);
+                //find the progname in $PATH, expand and save to cmd->cmd
+                for (size_t i = 0; i < pip->cntr; i++){
+                    if(expandPathVar(pip->cmd[i]->args[0], &pip->cmd[i]->cmd))
+                        goto next; 
                 }
-                
-                cleanUp(&pathargs, &path);
-
-            } while (1);
+                execCmds(pip);
+                cleanUp(pip);
             break;
         case CHDIR:
 
@@ -49,7 +44,7 @@ int main(int argc, char const *argv[])
             return 1;
             break;
         }
-
+        next:
         puts("end of loop successful");
     }
 }

@@ -1,5 +1,22 @@
 #include "myheader.h"
 
+const int MAXSIZE = 15;
+const size_t BUILTINS_LEN = 3;
+const size_t OPERATORS_LEN = 5;
+
+static const char *BUILTINS[3] =
+{
+    "exec",  // execute bin/script    0
+    "chdir", // change directory      1
+    "exit"   // exit program          2
+};
+
+
+static const char *OPERATORS[5] =
+{
+    "|", ">", "<", ">>", ""
+};
+
 int checkToken(char *tok)
 {
     for (size_t i = 0; i < OPERATORS_LEN; i++)
@@ -9,7 +26,7 @@ int checkToken(char *tok)
             return i;
         }
     }
-    return -1;
+    return 4;
 }
 
 int expandPathVar(char *target, const char **out)
@@ -62,7 +79,7 @@ int expandPathVar(char *target, const char **out)
 }
 }
 
-int validatePath(char *path)
+int validatePath(const char *path)
 {
     int fd;
     if((fd = open(path, O_RDONLY)) < 0)
@@ -103,22 +120,17 @@ int validateKeyAndAdvbufptr(char *key_out, char **buf)
     return 1;
 }
 
-// NEEDED LATER
-/*
-char *progname_ptr = strrchr(progpath, '/') == NULL ? progpath : strrchr(progpath, '/') + 1;
-char *progname = strdup(progname_ptr);
-*/
 Pipe *assignPipeline(Token *tokens[], int len)
 {
     int cntr = 0;
     int argc = 0;
-    Pipe *pipeline = malloc(sizeof(Pipe));
+    Pipe *pipeline = malloc(sizeof(Pipe));  // pipe struct has fixed cmdarray size
     for (size_t i = 0; i < 15; i++)
     {
         Command *c = malloc(sizeof(Command));
-        pipeline->cmd[i]=c;                             //these must be all freed afterwards.//So: pipeline->cmd->args->allelementsonebyone 
+        pipeline->cmd[i] = c;                             //these must be all freed afterwards.//So: pipeline->cmd->args->allelementsonebyone 
         pipeline->cmd[i]->args = malloc(sizeof(char*));
-        pipeline->cmd[i]->args_capacity = 1;                                               //then: pipeline->cmd->name
+        pipeline->cmd[i]->args_capacity = 1;
     }
     pipeline->cntr = 1;
     Command *current = pipeline->cmd[cntr];
@@ -136,9 +148,11 @@ Pipe *assignPipeline(Token *tokens[], int len)
                 current->args = realloc(current->args, sizeof(char*)*2*current->args_capacity);
                 current->args_capacity *= 2;
             }
-            current->args[argc++] = tokens[i]->name;
+            //make individual ptrs for pathofprogram and programname and truncate if user specified fullpath
+            char *progname_ptr = strrchr(tokens[i]->name, '/') == NULL ? tokens[i]->name : strrchr(tokens[i]->name, '/') + 1;
+            char *progname = strdup(progname_ptr);
+            current->args[argc++] = progname;
             current->args_count++;
-
             break;
         case PIPE:
             if(current->args_count == current->args_capacity)
@@ -164,13 +178,13 @@ Pipe *assignPipeline(Token *tokens[], int len)
             break;
         }
     }
-
     return pipeline;
 }
 
 int tokenize(char **buf, Token **token_list_out[], size_t *len_out)
 {
-    Token *tokens = malloc(sizeof(Token)*25);
+    *token_list_out = malloc(sizeof(Token*)*25);
+    Token *token;
     char bufcpy[1000];
     strcpy(bufcpy, *buf);
 
@@ -178,42 +192,132 @@ int tokenize(char **buf, Token **token_list_out[], size_t *len_out)
     char *tok = strtok(bufcpy, " ");
     while (tok != NULL)
     {
-
+        token = malloc(sizeof(*token));
         if ((key = checkToken(tok)) == WORD)
         {
-            tokens[k].name = strdup(tok);
-            tokens[k].type = WORD;
+            token->name = strdup(tok);
+            token->type = WORD;
         }
         else
         {
-            tokens[k].type = key;
+            token->type = key;
         }
-
+        (*token_list_out)[k] = token;
         tok = strtok(NULL, " ");
         k++;
     }
 
-    *token_list_out = realloc(tokens, sizeof(Token)*(k+1));
-    *len_out = k+1;
+    *token_list_out = realloc(*token_list_out, sizeof(Token)*(k));
+    *len_out = k;
 
     return 0;
 }
 
-void cleanUp(char *const **pathargs, const char **path)
+void cleanUp(Pipe *pipeline)
 {
-    int index = 0;
-    
-    while((*pathargs)[index] != NULL)
+    int i = 0;
+    while(i <= pipeline->cntr)
     {
-        free((*pathargs)[index++]);
+        int k = 0; 
+        while(pipeline->cmd[i]->args_count < k)
+        {
+            free(pipeline->cmd[i]->args[k]);
+            k++;
+        }
+        if(pipeline->cmd[i]->file_in) free(pipeline->cmd[i]->file_in);
+        if(pipeline->cmd[i]->file_out) free(pipeline->cmd[i]->file_out);
+        free(pipeline->cmd[i]);
+        i++;
     }
-    free((char *)*pathargs);
-    free((char *)*path);
 
+    free(pipeline);
 }
 
-int ExecCmds(Token *tokens[], size_t *index)
+int execCmds(Pipe *cmds)
 {
-   
+    size_t len = cmds->cntr;
+    pid_t cid, errid;
+    int wstatus;
+    int fd[2];
+    char *temp;
+    size_t i;
+    for (i = 0; i < len; i++)
+    {
+        if(pipe(fd) != 0){
+            fprintf(stderr, "pipe failed");
+            abort();
+        }
+        
+        int in;
+        int out;
+        cid = fork();
+        switch (cid)
+        {
+            case 0:
+            char buf[4096];
+            //check if cmd takes input from file and write it to stdin
+            if((temp = cmds->cmd[i]->file_in) != NULL){
+
+                if((in = open(temp, O_RDONLY)) < 0){
+                    perror("child_in open");
+                    errno = 0;
+                    abort();
+                }
+                read(in, buf, 4096);
+                printf("%s\n", buf);
+                dup2(in, STDIN_FILENO);
+                printf("%s\n", temp);
+                temp = NULL;    //for reuse
+            }
+
+            //check if cmd outputs to file instead of piping
+            if ((temp = cmds->cmd[i]->file_out) != NULL){
+                out = cmds->cmd[i]->append_flag? 
+                    open(temp, O_WRONLY | O_APPEND | O_CREAT, 0722) : open(temp, O_WRONLY | O_TRUNC | O_CREAT, 0722)
+                ;
+                if(out < 0){
+                    perror("child_out open");
+                    errno = 0;
+                    abort();
+                }
+                printf("IWASHERE");
+                dup2(out, STDOUT_FILENO);
+                temp = NULL;
+            }
+            else // pipe
+            {
+                puts("inside child regular condition");
+                if(i < len-1)
+                {
+                    puts("inside pipe child LAST CONDITION");
+                    dup2(fd[1], STDOUT_FILENO);
+                }
+            }
+            close(fd[0]);
+            execv(cmds->cmd[i]->cmd, cmds->cmd[i]->args);
+            perror("execv child");
+            errno = 0;
+            abort();
+        break;
+        case -1:
+            fprintf(stderr, "fork failed");
+            _exit(EXIT_FAILURE);
+            break;
+        default:
+            if(!cmds->cmd[i]->file_out){
+                
+            }
+
+            if((errid =  wait(&wstatus))){
+                if(!WIFEXITED(wstatus)){
+                    perror("errid");
+                }
+            }
+            close(fd[1]);
+            close(fd[0]);
+            break;
+        }
+    }
+
     return 0;
 }
