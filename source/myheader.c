@@ -347,7 +347,9 @@ int execCmds(Pipe *cmds)
 
         default:
             close(fd[1]);
-            old_fd0 = fd[0];
+            old_fd0 = dup(fd[0]);
+            close(fd[0]);
+            
             if ((errid = wait(&wstatus)))
             {
                 if (!WIFEXITED(wstatus))
