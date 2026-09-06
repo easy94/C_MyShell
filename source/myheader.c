@@ -272,22 +272,20 @@ int execCmds(Pipe *cmds)
     int fd[2];
     char *temp;
     size_t i;
+    int old_fd0 = -1;
 
-    if(pipe(fd) != 0){
-        fprintf(stderr, "pipe failed");
-        abort();
-    }
     
     for (i = 0; i < len; i++)
     {
-        temp = NULL;
-       /*
-            dup2(): make arg2 become another entry for arg1.
-       */
-      cid = fork();
-      switch (cid)
-      {
-          case 0:
+        if(pipe(fd) != 0){
+            fprintf(stderr, "pipe failed");
+            abort();
+        }
+
+        cid = fork();
+        switch (cid)
+        {
+        case 0:
             int in = -1;    //
             int out = 0;
             //check if cmd takes input from file and write it to stdin
@@ -316,14 +314,24 @@ int execCmds(Pipe *cmds)
             }
             else // pipe
             {
-                if(in < 0){ //if no inputfile was specified, take the pipe as input
-                    dup2(fd[0], STDIN_FILENO);
+                if(in < 0)
+                { //if no inputfile was specified, take the pipe as input
+                    if(old_fd0 > -1){
+                        dup2(old_fd0, STDIN_FILENO);
+                    }
+                    else{
+                        dup2(fd[0], STDIN_FILENO);
+                    }
+                    
                 }
                 if(i < len-1)   //last iteration: dont write to pipe
                 {
                     dup2(fd[1], STDOUT_FILENO);
                 }
             }
+            if(old_fd0 > -1)
+                close(old_fd0)
+            ;
             close(fd[1]);
             close(fd[0]);
             execv(cmds->cmd[i]->cmd, cmds->cmd[i]->args);
@@ -338,26 +346,16 @@ int execCmds(Pipe *cmds)
             break;
 
         default:
-        
-        if(i == len-1)
-        close(fd[1]);
-        
-        printf("check\n");
-        if((errid =  wait(&wstatus))){
-            if(!WIFEXITED(wstatus)){
-                abort();
+            close(fd[1]);
+            old_fd0 = fd[0];
+            if ((errid = wait(&wstatus)))
+            {
+                if (!WIFEXITED(wstatus))
+                {
+                    abort();
+                }
             }
-        }
-       /*
-       char buf[4000] = {0};
-       int c;
-       if((c=read(fd[0], buf,4000)) < 0){
-        printf("nothing\n");
-    }
-    printf("%s\n", buf);
-    */ 
-        //close(fd[0]);
-        
+
             break;
         }
     }
