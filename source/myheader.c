@@ -266,16 +266,14 @@ void cleanUpPipe(Pipe *pipeline)
 
 int execCmds(Pipe *cmds)
 {
-    size_t len = cmds->cntr;
     pid_t cid, errid;
     int wstatus;
     int fd[2];
+    int prev_fd0 = -1;
     char *temp;
-    size_t i;
-    int old_fd0 = -1;
-
     
-    for (i = 0; i < len; i++)
+    size_t len = cmds->cntr;
+    for (size_t i = 0; i < len; i++)
     {
         if(pipe(fd) != 0){
             fprintf(stderr, "pipe failed");
@@ -316,8 +314,8 @@ int execCmds(Pipe *cmds)
             {
                 if(in < 0)
                 { //if no inputfile was specified, take the pipe as input
-                    if(old_fd0 > -1){
-                        dup2(old_fd0, STDIN_FILENO);
+                    if(prev_fd0 > -1){
+                        dup2(prev_fd0, STDIN_FILENO);
                     }
                     else{
                         dup2(fd[0], STDIN_FILENO);
@@ -329,11 +327,11 @@ int execCmds(Pipe *cmds)
                     dup2(fd[1], STDOUT_FILENO);
                 }
             }
-            if(old_fd0 > -1)
-                close(old_fd0)
-            ;
+
+            prev_fd0 != -1 ? close(prev_fd0) :
             close(fd[1]);
             close(fd[0]);
+
             execv(cmds->cmd[i]->cmd, cmds->cmd[i]->args);
             perror("execv child");
             errno = 0;
@@ -343,22 +341,22 @@ int execCmds(Pipe *cmds)
         case -1:
             fprintf(stderr, "fork failed");
             _exit(EXIT_FAILURE);
-            break;
+        break;
 
         default:
             close(fd[1]);
-            old_fd0 = dup(fd[0]);
+            prev_fd0 = dup(fd[0]);
             close(fd[0]);
-            
+
             if ((errid = wait(&wstatus)))
             {
-                if (!WIFEXITED(wstatus))
+                if (!WIFEXITED(wstatus))    // no idea how to properly
                 {
                     abort();
                 }
             }
 
-            break;
+        break;
         }
     }
 
