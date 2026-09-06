@@ -129,6 +129,13 @@ void checkArgCapacity(Command *curr)
     }
 }
 
+void addArgCmd(Command *curr, int *cntr, char *arg)
+{
+    checkArgCapacity(curr);
+    curr->args[(*cntr)++] = arg;
+    curr->args_count++;
+}
+
 Pipe *assignPipeline(Token *tokens[], int len)
 {
     int cntr = 0;
@@ -155,27 +162,23 @@ Pipe *assignPipeline(Token *tokens[], int len)
         case WORD:
             if(argc == 0){
                 current->cmd = tokens[i]->name;
+                char *progname_ptr = strrchr(tokens[i]->name, '/') == NULL ? tokens[i]->name : strrchr(tokens[i]->name, '/') + 1;
+                char *progname = strdup(progname_ptr);
+                addArgCmd(current, &argc, progname);
             }
-            checkArgCapacity(current);
-            char *progname_ptr = strrchr(tokens[i]->name, '/') == NULL ? tokens[i]->name : strrchr(tokens[i]->name, '/') + 1;
-            char *progname = strdup(progname_ptr);
-            current->args[0] = progname;
-            argc++;
-            current->args_count++;
+            else
+                addArgCmd(current, &argc, tokens[i]->name);
+
             if(!(i < len -1)){
-                checkArgCapacity(current);
-                current->args[argc++] = NULL;
-                current->args_count++;
+                addArgCmd(current, &argc, NULL);
             }
             //make individual ptrs for pathofprogram and programname and truncate if user specified fullpath
             break;
         case PIPE:
-            checkArgCapacity(current);
-            current->args[argc] = NULL;
-            current->args_count++;
+            addArgCmd(current, &argc, NULL);
             argc = 0;
             current = pipeline->cmd[++cntr];
-            pipeline->cntr++;
+            pipeline->cntr++; 
             break;
         case REDIRECT_FROM:
             current->file_in = tokens[++i]->name;
@@ -188,6 +191,7 @@ Pipe *assignPipeline(Token *tokens[], int len)
             break;
         case APPEND_TO:
             current->file_out = tokens[++i]->name;
+            current->append_flag = 1;
             break;
         default:
             break;
@@ -273,34 +277,29 @@ int execCmds(Pipe *cmds)
         fprintf(stderr, "pipe failed");
         abort();
     }
-
+    
     for (i = 0; i < len; i++)
     {
         temp = NULL;
        /*
-            dup2() makes arg2 become another entry for arg1.
+            dup2(): make arg2 become another entry for arg1.
        */
-        int in;
-        int out;
-        cid = fork();
-        switch (cid)
-        {
-            case 0:
-            char buf[4096];
+      cid = fork();
+      switch (cid)
+      {
+          case 0:
+            int in = -1;    //
+            int out = 0;
             //check if cmd takes input from file and write it to stdin
             if((temp = cmds->cmd[i]->file_in) != NULL){
-                printf("%s\n", temp);
                 if((in = open(temp, O_RDONLY)) < 0){
                     perror("child_in open");
                     errno = 0;
                     abort();
                 }
-                read(in, buf, 4096);
-                printf("%s\n", buf);
                 dup2(in, STDIN_FILENO);
-                printf("%s\n", temp);
-                temp = NULL;    //for reuse
             }
+            temp = NULL;    //for reuse
 
             //check if cmd outputs to file instead of piping
             if ((temp = cmds->cmd[i]->file_out) != NULL){
@@ -312,17 +311,16 @@ int execCmds(Pipe *cmds)
                     errno = 0;
                     abort();
                 }
-                printf("IWASHERE");
                 dup2(out, STDOUT_FILENO);
                 temp = NULL;
             }
             else // pipe
             {
-                dup2(fd[0], STDIN_FILENO);
-                puts("inside child regular condition");
-                if(i < len-1)
+                if(in < 0){ //if no inputfile was specified, take the pipe as input
+                    dup2(fd[0], STDIN_FILENO);
+                }
+                if(i < len-1)   //last iteration: dont write to pipe
                 {
-                    puts("inside pipe child LAST CONDITION");
                     dup2(fd[1], STDOUT_FILENO);
                 }
             }
@@ -340,22 +338,29 @@ int execCmds(Pipe *cmds)
             break;
 
         default:
-            if(!(i < len - 1)){    //
-                close(fd[0]);
-                close(fd[1]);
+        
+        if(i == len-1)
+        close(fd[1]);
+        
+        printf("check\n");
+        if((errid =  wait(&wstatus))){
+            if(!WIFEXITED(wstatus)){
+                abort();
             }
-
-            if((errid =  wait(&wstatus))){
-                if(!WIFEXITED(wstatus)){
-                    perror("errid");
-                }
-            }
-
+        }
+       /*
+       char buf[4000] = {0};
+       int c;
+       if((c=read(fd[0], buf,4000)) < 0){
+        printf("nothing\n");
+    }
+    printf("%s\n", buf);
+    */ 
+        //close(fd[0]);
+        
             break;
         }
     }
-    close(fd[1]);
-    close(fd[0]);
 
     return 0;
 }

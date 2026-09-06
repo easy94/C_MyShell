@@ -27,4 +27,4 @@ piping the output, printing the result to screen.
 - redirecting input >> << > < 2>
 - aliases
 - prompt customization?
-- 
+- (.) expanding doesnt exist yet.(expanding in general) -> aliasing first.
