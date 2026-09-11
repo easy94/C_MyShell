@@ -1,16 +1,8 @@
 #include "myheader.h"
+#include "builtins.h"
 
 const int MAXSIZE = 15;
-const size_t BUILTINS_LEN = 3;
 const size_t OPERATORS_LEN = 5;
-
-static const char *BUILTINS[3] =
-{
-    "exec",  // execute bin/script    0
-    "chdir", // change directory      1
-    "exit"   // exit program          2
-};
-
 
 static const char *OPERATORS[5] =
 {
@@ -219,6 +211,7 @@ int tokenize(char **buf, Token **token_list_out[], size_t *len_out)
         }
         else
         {
+            token->name = NULL;
             token->type = key;
         }
         (*token_list_out)[k] = token;
@@ -240,7 +233,6 @@ void cleanUpTokSucc(Token **tok, size_t tok_len)
     }
     free(tok);
 }
-
 
 void cleanUpTokFail(Token **tok, size_t tok_len)
 {
@@ -361,4 +353,43 @@ int execCmds(Pipe *cmds)
     }
 
     return 0;
+}
+
+expandVar(Token ***token, size_t len)
+{
+    char *temp;
+    for (size_t i = 0; i < len; i++)
+    {
+        switch ((**token)->type)
+        {
+        case WORD:
+            if((temp = (**token)->name) == '$'){
+                if(getenv(temp)){
+                    (**token)->name = temp;
+                }
+                else if(varGet(temp))
+            }    
+
+        break;
+        
+        default:
+        break;
+        }
+
+        if((temp = (**token)->name) == '$')
+        {
+            //look into shell variables and
+            if()
+            {
+
+            }
+            //look into environment variables
+            if(getenv(temp))
+            {
+                (**token)->name = 
+            }
+            
+        }
+    }
+    
 }

@@ -28,3 +28,6 @@ piping the output, printing the result to screen.
 - aliases
 - prompt customization?
 - (.) expanding doesnt exist yet.(expanding in general) -> aliasing first.
+
+
+TEST WHAT HAPPENS WHEN RUNNING MY SHELL AND OPENING IT AGAIN INSIDE IT AND THEN TEST ENVIRON VARS
