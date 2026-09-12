@@ -1,7 +1,10 @@
 #include "myheader.h"
+#include "vars.h"
+#include "builtins.h"
 
 int main(int argc, char const *argv[])
 {
+    varCreate();
     Token **token_ptrs;
     size_t token_len;
     Pipe *pip;
@@ -24,6 +27,7 @@ int main(int argc, char const *argv[])
         {
         case EXEC:
                 tokenize(&bufptr, &token_ptrs, &token_len);
+                expandVar(&token_ptrs, &token_len);
                 pip = assignPipeline(token_ptrs, token_len);
                 //find the progname in $PATH, expand and save to cmd->cmd
                 for (size_t i = 0; i < pip->cntr; i++){
@@ -35,6 +39,9 @@ int main(int argc, char const *argv[])
                 execCmds(pip);
                 cleanUpTokSucc(token_ptrs, token_len);
                 cleanUpPipe(pip);
+            break;
+        case VAR:
+                
             break;
         case CHDIR:
 

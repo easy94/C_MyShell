@@ -1,10 +1,10 @@
 #include "myheader.h"
 #include "builtins.h"
+#include "vars.h"
 
-const int MAXSIZE = 15;
 const size_t OPERATORS_LEN = 5;
 
-static const char *OPERATORS[5] =
+const char *OPERATORS[5] =
 {
     "|", ">", "<", ">>", ""
 };
@@ -18,7 +18,7 @@ int checkToken(char *tok)
             return i;
         }
     }
-    return 4;
+    return WORD;
 }
 
 int expandPathVar(char *target, const char **out)
@@ -92,11 +92,11 @@ int validateKeyAndAdvbufptr(char *key_out, char **buf)
         k++;
     }
 
-    arg[k] = '\0';
-
     if(k > 15 || k == 0)
         return 1
     ;
+
+    arg[k] = '\0';
 
     for (size_t i = 0; i < BUILTINS_LEN; i++)
     {
@@ -107,7 +107,6 @@ int validateKeyAndAdvbufptr(char *key_out, char **buf)
             return 0;
         }
     }
-
     fprintf(stderr, "no keyword matching\n");
     return 1;
 }
@@ -355,41 +354,42 @@ int execCmds(Pipe *cmds)
     return 0;
 }
 
-expandVar(Token ***token, size_t len)
+void expandVar(Token ***token, size_t *len)  //scanner needed for sophisticated expansion
 {
     char *temp;
-    for (size_t i = 0; i < len; i++)
+    char *val;
+    for (size_t i = 0; i < *len; i++)
     {
-        switch ((**token)->type)
+        switch ((*token)[i]->type)
         {
-        case WORD:
-            if((temp = (**token)->name) == '$'){
-                if(getenv(temp)){
-                    (**token)->name = temp;
+            case WORD:
+            if ((*token)[i]->name[0] == '$')
+            {
+                temp = (*token)[i]->name +1; //skip '$'
+
+                if ((val = getenv(temp))){
+                    (*token)[i]->name = realloc((*token)[i]->name, strlen(val)+1);
+                    strcpy((*token)[i]->name, val);
                 }
-                else if(varGet(temp))
-            }    
-
-        break;
-        
-        default:
-        break;
-        }
-
-        if((temp = (**token)->name) == '$')
-        {
-            //look into shell variables and
-            if()
-            {
-
+                else if ((val = varGet(temp))){
+                    (*token)[i]->name = realloc((*token)[i]->name, strlen(val)+1);
+                    strcpy((*token)[i]->name, val);
+                }
+                temp = NULL;
+                val = NULL;
             }
-            //look into environment variables
-            if(getenv(temp))
-            {
-                (**token)->name = 
-            }
-            
+                break;
+
+            default:
+                break;
         }
     }
-    
+}
+
+int assignVar(char *buf)
+{
+    char *ch = strchr(buf, '=');
+    (*ch) = '\0';
+    varAdd(buf, ch+1);
+    return 0;
 }

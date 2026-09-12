@@ -22,12 +22,8 @@ enum OPERATOR
     WORD = 4,
 };
 
-enum BUILTIN
-{
-    EXEC = 0,
-    CHDIR = 1,
-    EXIT_APP = 2,
-};
+extern const char *OPERATORS[];
+extern const size_t OPERATORS_LEN;
 
 typedef struct
 {
@@ -62,6 +58,7 @@ void cleanUpTokFail(Token **tok, size_t tok_len);
 void cleanUpTokSucc(Token **tok, size_t tok_len);
 void cleanUpPipe(Pipe *pipeline);
 int execCmds(Pipe *pipeline);
+void expandVar(Token ***token, size_t *len);
 
 
 #endif // MYHEADER_H
