@@ -59,6 +59,7 @@ void cleanUpTokSucc(Token **tok, size_t tok_len);
 void cleanUpPipe(Pipe *pipeline);
 int execCmds(Pipe *pipeline);
 void expandVar(Token ***token, size_t *len);
+int assignVar(char *buf);
 
 
 #endif // MYHEADER_H

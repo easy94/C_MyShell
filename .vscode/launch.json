@@ -12,7 +12,6 @@
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
-            "preLaunchTask": "main build",
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",
@@ -30,14 +29,14 @@
             "name": "Debug test.c",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/testing/test",
+            "program": "${workspaceFolder}/test/test",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/testing",
+            "cwd": "${workspaceFolder}/test",
             "environment": [],
+            "preLaunchTask": "make task",
             "externalConsole": false,
             "MIMode": "gdb",
-            "preLaunchTask": "Build test.c",
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",

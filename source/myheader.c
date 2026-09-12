@@ -387,9 +387,12 @@ void expandVar(Token ***token, size_t *len)  //scanner needed for sophisticated 
 }
 
 int assignVar(char *buf)
-{
-    char *ch = strchr(buf, '=');
-    (*ch) = '\0';
-    varAdd(buf, ch+1);
+{    
+    int k = 0;
+    while (buf[k] != '='){
+        k++;
+    }
+    
+    varAdd(buf, buf+k+1);
     return 0;
 }

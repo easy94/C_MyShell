@@ -1,11 +1,22 @@
 #include "vars.h"
 
-static struct var *vars;
-static size_t var_len = 1;
+static struct var **vars;
+static size_t var_len = 0;
+
+void varCleanUp()
+{
+    for (size_t i = 0; i < var_len; i++)
+    {
+        free(vars[i]->identifier);        
+        free(vars[i]->value);
+        free(vars[i]);
+    }
+    free(vars);
+}
 
 void varCreate()
 {
-    vars = malloc(1);
+    vars = malloc(0);
 }
 
 char *varGet(char *id)
@@ -13,9 +24,10 @@ char *varGet(char *id)
     char *temp;
     for (size_t i = 0; i < var_len; i++)
     {
-        if((temp = vars[i].identifier) == id)
+        temp = (*vars)[i].identifier;
+        if(strcmp(temp, id))
         {
-            return temp;
+            return (*vars)[i].value;
         }
     }
     
@@ -25,9 +37,8 @@ char *varGet(char *id)
 int isVarDup(char *arg){
     for (size_t i = 0; i < var_len; i++)
     {
-        if(vars[i].identifier == arg) return 1; 
+        if((*vars)[i].identifier == arg) return 1; 
     }
-
     return 0;
 }
 
@@ -39,10 +50,11 @@ int varAdd(char* id, char *val)
     }
 
     vars = reallocarray(vars, ++var_len, sizeof(struct var));
-    strcpy(vars[var_len].identifier, id);
-    strcpy(vars[var_len].value, val);
+    struct var *new = calloc(1, sizeof(new));
     
-
+    new->value = strdup(val);
+    new->identifier = strdup(id);
+    vars[var_len-1] = new;
     return 0;
 }
 
