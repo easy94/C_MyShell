@@ -26,10 +26,17 @@ piping the output, printing the result to screen.
 - variable setting
 - redirecting input >> << > < 2>
 - aliases
-- prompt customization?
+- prompt/currentpath
 - (.) expanding doesnt exist yet.(expanding in general) -> aliasing first.
 
 
 TEST WHAT HAPPENS WHEN RUNNING MY SHELL AND OPENING IT AGAIN INSIDE IT AND THEN TEST ENVIRON VARS
+
+### Why the prev_fd0 is needed
+
+Whenever the Parent forks, it needs a Read file descriptor.
+When the parents didn't save the previous read into its own descriptor,
+the parent would hand over the read descriptor to the child, but
+it has no read descriptor of its own to read from.
 
 ### WRITE A SCRIPT THAT HELPS ME WITH MY MAKEFILE DEPENDECIES AUTOMATICALLY

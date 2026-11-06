@@ -354,7 +354,7 @@ int execCmds(Pipe *cmds)
     return 0;
 }
 
-void expandVar(Token ***token, size_t *len)  //scanner needed for sophisticated expansion
+void expandVar(Token ***token, size_t *len)
 {
     char *temp;
     char *val;
@@ -384,6 +384,11 @@ void expandVar(Token ***token, size_t *len)  //scanner needed for sophisticated 
                 break;
         }
     }
+}
+
+void changeDir(Token *tok)
+{
+    
 }
 
 int assignVar(char *buf)

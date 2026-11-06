@@ -2,7 +2,7 @@ CFLAGS = -g -std=c17 -Werror -Wall
 
 main: ./build/main.o ./build/myheader.o ./build/builtins.o ./build/vars.o
 	gcc $(CFLAGS) $^ -o $@
-./test/test: ./build/test.o ./build/myheader.o ./build/vars.o ./build/builtins.o
+./test/test: ./build/test.o ./build/myheader.o ./build/builtins.o
 	gcc $(CFLAGS) $^ -o $@
 ./build/main.o: ./source/main.c ./source/myheader.h
 	gcc $(CFLAGS) -c ./source/main.c -o $@

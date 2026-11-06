@@ -41,10 +41,13 @@ int main(int argc, char const *argv[])
                 cleanUpPipe(pip);
             break;
         case VAR:
-                
+                tokenize(&bufptr, &token_ptrs, &token_len);
+                assignVar(buf);
+                cleanUpTokSucc(token_ptrs, token_len);
             break;
         case CHDIR:
-
+                changeDir(&token_ptrs);
+                cleanUpTokSucc(token_ptrs, token_len);
             break;
         case EXIT_APP:
             abort();
